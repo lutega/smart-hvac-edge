@@ -172,6 +172,7 @@ button:active{filter:brightness(1.25)}
         <div class="tgl"><span>Mulai rapat otomatis dari jadwal</span><button class="sw" data-auto="start_from_schedule"></button></div>
         <div class="tgl"><span>Nyalakan AC saat rapat dimulai</span><button class="sw" data-auto="on_at_start"></button></div>
         <div class="tgl"><span>Matikan AC saat rapat selesai</span><button class="sw" data-auto="off_at_end"></button></div>
+        <div class="tgl"><span>AI mengatur AC otomatis</span><button class="sw" data-auto="ai_auto"></button></div>
       </div>
       <button id="r-pin" style="margin-top:auto;background:none;color:var(--teal);font-size:15px;font-weight:600;text-align:left;padding:0">Ganti PIN teknisi</button>
     </div>
@@ -330,14 +331,36 @@ function renderMeet() {
   $("#m-last").textContent = a.power_wait_s > 0 ? "Proteksi kompresor · " + Math.floor(a.power_wait_s / 60) + ":" + String(a.power_wait_s % 60).padStart(2, "0") + " lagi" :
     c ? (c.result === "terkirim" ? "Terkirim " : c.result[0].toUpperCase() + c.result.slice(1) + " ") + hm(c.ts) + " · " + (c.code_key || "") + (c.latency_ms ? " · " + c.latency_ms + " ms" : "") : "Belum ada perintah";
   spark();
-  const r = S.recommendation;
-  $("#m-rec").innerHTML = r ? `<div class="card" style="padding:16px 20px;border:1.5px solid rgba(242,176,74,.55);display:flex;flex-direction:column;gap:7px">
-      <div style="display:flex;align-items:center;gap:10px"><span style="color:var(--amber);font-size:18px">✦</span><span style="font-size:15px;font-weight:600;color:var(--amber)">Rekomendasi AI</span><span class="mut" style="margin-left:auto;font-size:12px">mesin aturan · ${r.rule}</span></div>
-      <div style="font-size:23px;font-weight:600">${esc(r.title)}</div>
-      <div class="mut" style="font-size:15px;line-height:1.4">${esc(r.reason)}</div>
-      <div style="display:flex;gap:10px;margin-top:4px"><button class="btn amber" style="flex:1;height:52px" onclick="recDo('apply','${r.rule}')">Terapkan</button><button class="btn" style="width:140px;height:52px;font-weight:400" onclick="recDo('dismiss','${r.rule}')">Abaikan</button></div></div>`
-    : `<div class="card mut" style="padding:16px 20px;font-size:15px"><span style="color:var(--teal)">✓</span>&nbsp; Tidak ada rekomendasi baru. Suhu dipantau terus.</div>`;
+  $("#m-rec").innerHTML = aiCard(S.advice);
 }
+const COMFORT = { nyaman: ["var(--teal)", "rgba(60,198,181,.14)"], hangat: ["var(--amber)", "rgba(242,176,74,.16)"], panas: ["#F2784A", "rgba(242,120,74,.18)"], dingin: ["#6FB7F2", "rgba(111,183,242,.16)"] };
+const mins = (s) => s >= 60 ? Math.ceil(s / 60) + " menit" : s + " detik";
+function aiCard(a) {
+  if (!a) return "";
+  const c = COMFORT[(a.comfort || "").split(" ")[0]] || ["var(--mut)", "var(--sf2)"];
+  const auto = a.mode === "otomatis", act = !!a.rule, change = act && a.desired_label !== a.current;
+  const pill = (on, txt) => `<span style="padding:5px 11px;border-radius:8px;font-size:13px;font-weight:600;${on ? "background:var(--ink);color:var(--bg)" : "color:var(--mut)"}">${txt}</span>`;
+  let foot = "";
+  if (act && a.actionable && !auto) foot = `<div style="display:flex;gap:10px"><button class="btn amber" style="flex:1;height:50px" onclick="recDo('apply','${a.rule}')">Terapkan</button><button class="btn" style="width:120px;height:50px;font-weight:400" onclick="recDo('dismiss','${a.rule}')">Abaikan</button></div>`;
+  else if (act && a.actionable && auto && a.auto_paused_s) foot = `<div class="mut" style="font-size:14px">Otomatis dijeda ${mins(a.auto_paused_s)} karena AC diubah manual. <button style="background:none;color:var(--amber);font-weight:600;padding:0;font-size:14px" onclick="recDo('apply','${a.rule}')">Terapkan sekarang</button></div>`;
+  else if (act && a.actionable && auto) foot = `<div style="font-size:14px;color:var(--amber);font-weight:600">AI sedang mengirim perintah ke AC…</div>`;
+  else if (act && a.dismissed_s) foot = `<div class="mut" style="font-size:14px">Saran diabaikan · muncul lagi dalam ${mins(a.dismissed_s)}</div>`;
+  else if (act && a.wait_s) foot = `<div class="mut" style="font-size:14px">${auto ? "AI menerapkan" : "Saran aktif"} dalam ${mins(a.wait_s)} · ${esc(a.wait_reason)}</div>`;
+  const last = a.last_ai && now() - a.last_ai.ts < 3600 ? `<div class="mut ell" style="font-size:12px">Terakhir: ${hm(a.last_ai.ts)} · ${esc(a.last_ai.detail || "")} · ${esc(a.last_ai.result)}</div>` : "";
+  return `<div class="card" style="padding:14px 18px;display:flex;flex-direction:column;gap:7px;border:1.5px solid ${act ? "rgba(242,176,74,.55)" : "transparent"}">
+    <div style="display:flex;align-items:center;gap:8px"><span style="color:var(--amber);font-size:17px">✦</span><span style="font-size:15px;font-weight:600">AI · realtime</span>
+      <span class="chip" style="font-size:12px;padding:3px 10px;background:${c[1]};color:${c[0]}">${esc(a.comfort)}</span>
+      <button onclick="aiMode()" style="margin-left:auto;display:flex;gap:2px;background:var(--bg);border-radius:10px;padding:3px">${pill(!auto, "Saran")}${pill(auto, "Otomatis")}</button></div>
+    <div style="display:flex;align-items:baseline;gap:12px"><span class="mut" style="font-size:14px">Setpoint ideal sekarang</span>
+      <span class="big" style="font-size:30px;color:${change ? "var(--amber)" : "var(--ink)"}">${esc(a.desired_label)}</span>
+      ${change ? `<span class="mut" style="font-size:14px">dari ${esc(a.current)}</span>` : `<span class="mut" style="font-size:14px">= sekarang</span>`}</div>
+    <div class="mut" style="font-size:14px;line-height:1.4">${esc(a.reason)}${a.rule ? ` <span style="color:var(--dim)">(${a.rule})</span>` : ""}</div>
+    ${foot}${last}</div>`;
+}
+window.aiMode = () => askPin(async () => {
+  try { const j = await api("/api/settings", "POST", { automation: { ai_auto: S.advice.mode !== "otomatis" } });
+    toast(j.automation.ai_auto ? "Mode otomatis: AI mengatur AC sendiri (tercatat di Riwayat)" : "Mode saran: AI hanya memberi saran"); poll(); } catch (e) { toast(e.message); }
+});
 function spark() {
   const h = S.history || [], svg = $("#m-spark"), tgt = S.room.target_c;
   if (h.length < 2) { svg.innerHTML = ""; $("#m-sparkl").textContent = "data terkumpul…"; return; }

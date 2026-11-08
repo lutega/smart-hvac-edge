@@ -35,7 +35,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-VERSION = "0.3.1"
+VERSION = "0.3.2"
 STATIC = Path(os.environ.get("HVAC_STATIC", "/opt/hvac/panel_static"))
 EDGE_CFG = Path(os.environ.get("HVAC_EDGE_CFG", "/etc/hvac/edge.toml"))
 SECRETS = Path(os.environ.get("HVAC_SECRETS", "/etc/hvac/secrets.toml"))
@@ -138,7 +138,9 @@ def load_settings():
     s.setdefault("pin", str(cfg.get("panel", {}).get("technician_pin", "0000")))
     s.setdefault("active_profile", None)
     s.setdefault("meeting_default_min", 60)
-    s.setdefault("automation", {"start_from_schedule": True, "on_at_start": False, "off_at_end": True})
+    s.setdefault("automation", {})
+    for k, v in (("start_from_schedule", True), ("on_at_start", False), ("off_at_end", True), ("ai_auto", False)):
+        s["automation"].setdefault(k, v)
     s.setdefault("schedule", DEFAULT_SCHEDULE)
     s.setdefault("booking_url", "https://booking.example/r/" + slug(room["name"]))
     return s
@@ -572,52 +574,126 @@ def control_tick():
                 save_meeting(m)
 
 
+def ai_auto_tick():
+    s = load_settings()
+    if not s["automation"].get("ai_auto"):
+        return
+    a = assess(s)
+    if not a["actionable"] or a["auto_paused_s"] > 0:
+        return
+    acc = ac_cfg(load_cfg())
+    prev = load_state(acc)["setpoint"]
+    row, _ = execute(a["action"], f"ai:{a['rule']}", setpoint=a.get("setpoint"),
+                     prev_sp=prev if a["action"] == "set_temp" else None, extra="otomatis oleh AI")
+    if row["result"] != "terkirim":
+        DISMISSED[a["rule"]] = time.time()      # jangan ulangi tiap 10 detik bila gagal
+
+
 def control_loop():
     while True:
         try:
             control_tick()
+            ai_auto_tick()
         except Exception as e:  # noqa: BLE001
             print(f"[control] {e}", flush=True)
         time.sleep(10)
 
 
 # ---------------------------------------------------------------- rekomendasi
-def recommend(s=None, m=None, st=None, acc=None):
+AUTO_PAUSE_S = 30 * 60       # mode otomatis dijeda setelah AC diubah manual dari panel
+
+
+def assess(s=None, m=None, st=None, acc=None):
+    """Penilaian AI realtime: kondisi kenyamanan, setpoint yang diinginkan sekarang, alasan,
+    dan aksi (bila ada) beserta kapan boleh dijalankan. Selalu ada selama data suhu tersedia."""
     s = s or load_settings()
     m = m or load_meeting()
     acc = acc or ac_cfg(load_cfg())
     st = st or load_state(acc)
     t, rh = room_now()
+    now = time.time()
+    auto = bool(s["automation"].get("ai_auto"))
+    manual_age = now - st.get("ts", 0) if str(st.get("source", "")).startswith("panel") else 1e9
+    out = {"mode": "otomatis" if auto else "saran",
+           "auto_paused_s": int(AUTO_PAUSE_S - manual_age) if auto and manual_age < AUTO_PAUSE_S else 0,
+           "current": f"{st['setpoint']} °C" if st["power"] else "Mati",
+           "rule": None, "action": None, "setpoint": None, "title": None,
+           "wait_s": 0, "wait_reason": None, "dismissed_s": 0, "actionable": False,
+           "last_ai": next(({"ts": r["ts"], "detail": r["detail"], "result": r["result"], "source": r["source"]}
+                            for r in recent_cmds(30) if str(r.get("source", "")).startswith("ai:")
+                            and r["action"] != "dismiss"), None)}
     if t is None:
-        return None
+        out.update(comfort="tanpa data", desired=None, desired_label="–",
+                   reason="Menunggu data suhu dari SMATRUL.")
+        return out
     target = float(s["room"]["target_c"])
     sp = int(st["setpoint"])
-    settled = time.time() - st.get("ts", 0) > SETTLE_S
-    rec = None
+    comfort = ("panas" if t >= target + 1.5 else "hangat" if t > target + 0.5
+               else "dingin" if t <= target - 1.0 else "nyaman")
+    humid = rh is not None and rh >= 70
+    out["comfort"] = comfort + (" · lembap" if humid and comfort != "dingin" else "")
+    since = now - st.get("ts", 0)
+    who = f" dengan {m['people']} orang" if m.get("active") and m.get("people") else ""
+    desired, act = (sp if st["power"] else None), None
+
     if not m.get("active"):
-        if st["power"] and not m.get("pending_off"):
-            rec = dict(rule="R7", title="Matikan AC", action="power_off",
-                       reason=f"Tidak ada rapat berjalan, AC masih menyala di {sp} °C. Matikan untuk hemat energi.")
+        desired = None
+        if st["power"]:
+            act = dict(rule="R7", action="power_off", title="Matikan AC",
+                       reason=f"Tidak ada rapat, AC masih menyala di {sp} °C. AC dimatikan untuk hemat energi.")
+        else:
+            out["reason"] = f"Ruangan kosong. AC tetap mati; suhu {fmt(t)} °C."
+    elif not st["power"]:
+        if t > target + 0.5:
+            desired = int(round(max(acc["sp_min"], min(acc["sp_max"], target))))
+            act = dict(rule="R1", action="set_temp", setpoint=desired, title=f"Nyalakan AC ke {desired} °C",
+                       reason=f"Rapat berjalan{who}; suhu {fmt(t)} °C di atas target {fmt(target)} °C.")
+        else:
+            out["reason"] = f"Rapat berjalan, suhu {fmt(t)} °C sudah nyaman (target {fmt(target)} °C). AC belum perlu dinyalakan."
     else:
-        people = m.get("people")
-        who = f" dan dipakai {people} orang" if people else ""
-        if not st["power"] and t > target + 0.5:
-            new = int(round(target))
-            rec = dict(rule="R1", title=f"Nyalakan AC ke {new} °C", action="set_temp", setpoint=new,
-                       reason=f"Rapat berjalan{who}, suhu {fmt(t)} °C di atas target {fmt(target)} °C.")
-        elif st["power"] and settled and t >= target + 1.5 and sp > acc["sp_min"]:
-            rec = dict(rule="R4", title=f"Turunkan setpoint ke {sp - 1} °C", action="set_temp", setpoint=sp - 1,
-                       reason=f"Suhu {fmt(t)} °C masih di atas batas nyaman {fmt(target + 1)} °C{who}, "
-                              f"padahal setpoint {sp} °C sudah berjalan lebih dari 10 menit.")
-        elif st["power"] and settled and rh is not None and rh >= 70 and t > target and sp > acc["sp_min"]:
-            rec = dict(rule="R6", title=f"Turunkan setpoint ke {sp - 1} °C", action="set_temp", setpoint=sp - 1,
-                       reason=f"Kelembapan {fmt(rh, 0)} % tinggi; menurunkan setpoint membantu AC membuang uap air.")
-        elif st["power"] and settled and t <= target - 1.0 and sp < acc["sp_max"]:
-            rec = dict(rule="R5", title=f"Naikkan setpoint ke {sp + 1} °C", action="set_temp", setpoint=sp + 1,
-                       reason=f"Suhu {fmt(t)} °C sudah di bawah target {fmt(target)} °C. Naikkan 1 °C untuk hemat energi.")
-    if rec and time.time() - DISMISSED.get(rec["rule"], 0) < DISMISS_S:
+        floor = max(acc["sp_min"], int(target) - 3)          # AI tidak menurunkan di bawah target-3 °C
+        if t >= target + 1.5 and sp > floor:
+            desired = sp - 1
+            act = dict(rule="R4", action="set_temp", setpoint=desired, title=f"Turunkan setpoint ke {desired} °C",
+                       reason=f"Suhu {fmt(t)} °C masih di atas batas nyaman {fmt(target + 1)} °C{who} "
+                              f"dengan setpoint {sp} °C.")
+        elif humid and t > target and sp > floor:
+            desired = sp - 1
+            act = dict(rule="R6", action="set_temp", setpoint=desired, title=f"Turunkan setpoint ke {desired} °C",
+                       reason=f"Kelembapan {fmt(rh, 0)} % tinggi; setpoint lebih rendah membantu AC membuang uap air.")
+        elif t <= target - 1.0 and sp < acc["sp_max"]:
+            desired = sp + 1
+            act = dict(rule="R5", action="set_temp", setpoint=desired, title=f"Naikkan setpoint ke {desired} °C",
+                       reason=f"Suhu {fmt(t)} °C di bawah target {fmt(target)} °C. Naik 1 °C untuk hemat energi.")
+        else:
+            out["reason"] = (f"Suhu {fmt(t)} °C dalam rentang nyaman ({fmt(target - 1)}–{fmt(target + 1.5)} °C). "
+                             f"Setpoint {sp} °C dipertahankan.")
+
+    out["desired"] = desired
+    out["desired_label"] = f"{desired} °C" if desired is not None else "Mati"
+    if act:
+        out.update(act)
+        if act["action"] == "set_temp" and st["power"] and since < SETTLE_S:
+            out.update(wait_s=int(SETTLE_S - since), wait_reason=f"memberi waktu ruangan merespons setpoint {sp} °C")
+        elif act["action"] in ("power_off",) or (act["action"] == "set_temp" and not st["power"]):
+            w = power_wait(st, acc)
+            if w:
+                out.update(wait_s=w, wait_reason="proteksi kompresor")
+        if act["rule"] == "R7" and m.get("pending_off"):
+            out.update(wait_s=max(out["wait_s"], power_wait(st, acc)), wait_reason="AC dimatikan setelah rapat selesai")
+        dis = DISMISS_S - (now - DISMISSED.get(act["rule"], 0))
+        if dis > 0:
+            out["dismissed_s"] = int(dis)
+        out["actionable"] = out["wait_s"] == 0 and out["dismissed_s"] == 0
+    return out
+
+
+def recommend(s=None, m=None, st=None, acc=None):
+    """Aksi yang bisa dijalankan sekarang (untuk tombol Terapkan / mode otomatis)."""
+    a = assess(s, m, st, acc)
+    if not a["actionable"]:
         return None
-    return rec
+    return {k: a[k] for k in ("rule", "title", "action", "setpoint", "reason")}
 
 
 def fmt(x, nd=1):
@@ -758,6 +834,7 @@ def status():
         "meeting": meeting,
         "schedule": schedule_today(s, now),
         "recommendation": recommend(s, m, st, acc),
+        "advice": assess(s, m, st, acc),
         "booking_url": s["booking_url"],
         "commands": recent_cmds(8),
         "learning": LEARNING["key"],
@@ -910,7 +987,7 @@ def settings_set(cmd: SettingsCmd):
             r["target_c"] = max(18.0, min(30.0, float(cmd.room["target_c"])))
     if cmd.automation:
         s["automation"].update({k: bool(v) for k, v in cmd.automation.items()
-                                if k in ("start_from_schedule", "on_at_start", "off_at_end")})
+                                if k in ("start_from_schedule", "on_at_start", "off_at_end", "ai_auto")})
     if cmd.booking_url:
         s["booking_url"] = cmd.booking_url[:200]
     if cmd.meeting_default_min:
