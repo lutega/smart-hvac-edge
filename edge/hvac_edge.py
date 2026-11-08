@@ -35,7 +35,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 STATIC = Path(os.environ.get("HVAC_STATIC", "/opt/hvac/panel_static"))
 EDGE_CFG = Path(os.environ.get("HVAC_EDGE_CFG", "/etc/hvac/edge.toml"))
 SECRETS = Path(os.environ.get("HVAC_SECRETS", "/etc/hvac/secrets.toml"))
@@ -250,6 +250,47 @@ def profile_summary(prof, acc, active_id=None):
             "updated": prof.get("updated"), "active": prof["id"] == active_id}
 
 
+# ----------------------------------------------------------- kode IR
+def ir_ok(code):
+    """Kode IR yang sah = string base64 dari pulsa 16-bit. receive_button() tinytuya
+    mengembalikan dict laporan (mis. suhu DPS 1/2) bila tombol tidak tertangkap."""
+    if not isinstance(code, str) or len(code) < 8:
+        return False
+    try:
+        import base64
+        c = code[1:] if len(code) % 4 == 1 and code.startswith("1") else code
+        raw = base64.b64decode(c, validate=True)
+        return len(raw) >= 8 and len(raw) % 2 == 0
+    except Exception:
+        return False
+
+
+def clean_codes(codes):
+    good = {k: v for k, v in (codes or {}).items() if ir_ok(v)}
+    return good, sorted(set(codes or {}) - set(good))
+
+
+def repair_datasets():
+    """Buang kode rusak (dict/non-base64) dari semua profil & draf, tercatat di log."""
+    for prof in list_profiles():
+        good, bad = clean_codes(prof.get("codes"))
+        if bad:
+            prof["codes"] = good
+            save_profile(prof)
+            log_cmd(source="auto:perbaikan", action="profile", result="ok",
+                    detail=f"{prof['name']}: kode rusak dibuang ({', '.join(bad)}), rekam ulang")
+    d = read_json(DRAFT, None)
+    if d:
+        good, bad = clean_codes(d.get("codes"))
+        if bad:
+            d["codes"] = good
+            write_json(DRAFT, d)
+
+
+def err(e):
+    return f"{type(e).__name__}: {str(e)[:90]}"
+
+
 # ----------------------------------------------------------- koneksi SMATRUL
 class Hub:
     """Satu objek tinytuya untuk baca status + kirim/learn IR, dipakai bergantian."""
@@ -282,7 +323,13 @@ class Hub:
         return self._call(sm, lambda d: d.status())
 
     def send(self, sm, code):
-        return self._call(sm, lambda d: d.send_button(code))
+        if not ir_ok(code):
+            raise ValueError("kode IR rusak, rekam ulang kode ini")
+        try:
+            return self._call(sm, lambda d: d.send_button(code))
+        except (OSError, ConnectionError, TimeoutError):
+            time.sleep(0.5)                     # sambung ulang sekali
+            return self._call(sm, lambda d: d.send_button(code))
 
     def learn(self, sm, timeout):
         return self._call(sm, lambda d: d.receive_button(timeout=timeout))
@@ -422,7 +469,8 @@ def execute(action, source="panel", setpoint=None, prev_sp=None, extra=None):
         try:
             HUB.send(sm, codes[key])
         except Exception as e:  # noqa: BLE001
-            return done(code_key=key, result="gagal", detail=f"SMATRUL tidak menjawab: {str(e)[:100]}",
+            why = str(e) if isinstance(e, ValueError) else f"SMATRUL tidak menjawab ({err(e)})"
+            return done(code_key=key, result="gagal", detail=why,
                         latency_ms=int((time.time() - t0) * 1000))
         lat = int((time.time() - t0) * 1000)
 
@@ -628,6 +676,7 @@ def _startup():
     DATA.mkdir(parents=True, exist_ok=True)
     db().close()
     migrate_legacy()
+    repair_datasets()
     if os.environ.get("HVAC_NO_POLL") != "1":
         threading.Thread(target=smatrul_loop, daemon=True).start()
         threading.Thread(target=control_loop, daemon=True).start()
@@ -1061,12 +1110,13 @@ def learn(key: str, timeout: int = 15, source: str = "learn"):
         try:
             code = HUB.learn(sm, timeout)
         except Exception as e:  # noqa: BLE001
-            log_cmd(source=source, action="learn", code_key=key, result="gagal", detail=str(e)[:100])
-            raise HTTPException(502, f"gagal merekam: {e}")
+            log_cmd(source=source, action="learn", code_key=key, result="gagal", detail=err(e))
+            raise HTTPException(502, f"gagal merekam: {err(e)}")
         finally:
             LEARNING.update(key=None, until=None)
-        if not code:
-            log_cmd(source=source, action="learn", code_key=key, result="gagal", detail="tidak ada sinyal")
+        if not ir_ok(code):
+            log_cmd(source=source, action="learn", code_key=key, result="gagal",
+                    detail="tidak ada sinyal" + ("" if not code else f" (diterima {str(code)[:60]})"))
             raise HTTPException(408, "tidak ada sinyal remote tertangkap")
         d.setdefault("codes", {})[key] = code
         write_json(DRAFT, d)
@@ -1090,8 +1140,8 @@ def test_code(key: str, source: str = "settings"):
         try:
             HUB.send(sm, code)
         except Exception as e:  # noqa: BLE001
-            log_cmd(source=source, action="test", code_key=key, result="gagal", detail=str(e)[:100])
-            raise HTTPException(502, f"gagal kirim: {e}")
+            log_cmd(source=source, action="test", code_key=key, result="gagal", detail=err(e))
+            raise HTTPException(502, str(e) if isinstance(e, ValueError) else f"SMATRUL tidak menjawab ({err(e)})")
         log_cmd(source=source, action="test", code_key=key, result="terkirim", detail=f"uji kode dari {where}",
                 latency_ms=int((time.time() - t0) * 1000))
     return {"ok": True, "from": where}

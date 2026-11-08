@@ -13,6 +13,7 @@ install -d -o "$PI_USER" -g "$PI_USER" /opt/hvac/app /opt/hvac/panel_static
 install -o "$PI_USER" -g "$PI_USER" -m 644 "$DIR/hvac_edge.py"      /opt/hvac/app/hvac_edge.py
 install -o "$PI_USER" -g "$PI_USER" -m 644 "$DIR/panel/index.html"  /opt/hvac/panel_static/index.html
 install -o "$PI_USER" -g "$PI_USER" -m 755 "$DIR/learn_codes.py"    /opt/hvac/learn_codes.py
+install -o "$PI_USER" -g "$PI_USER" -m 755 "$DIR/irdiag.py"         /opt/hvac/irdiag.py
 install -d -o "$PI_USER" -g "$PI_USER" /var/lib/hvac /var/lib/hvac/remotes /var/lib/hvac/export
 chown -R "$PI_USER:$PI_USER" /var/lib/hvac
 [[ -f /var/lib/hvac/codes.json ]] && cp -n /var/lib/hvac/codes.json /var/lib/hvac/codes.before-v03.json || true
