@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1024, height=600, user-scalable=no">
+<title>Panel Ruang Rapat</title>
+<style>
+:root{--bg:#0F1B24;--sf:#172734;--sf2:#24384A;--ink:#EAF1F6;--mut:#9FB2C1;--dim:#5F7586;--teal:#3CC6B5;--teal-ink:#06231F;--amber:#F2B04A;--amber-ink:#2A1A00}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;width:1024px;height:600px;overflow:hidden;background:var(--bg);color:var(--ink);font-family:Inter,"DejaVu Sans",sans-serif;user-select:none;-webkit-user-select:none;cursor:none}
+button{font-family:inherit;border:0;color:inherit;cursor:none}
+button:active{filter:brightness(1.25)}
+.view{position:absolute;inset:0;display:none}
+.view.on{display:flex}
+.card{background:var(--sf);border-radius:18px}
+.mut{color:var(--mut)}
+.big{font-family:"DejaVu Sans",Inter,sans-serif;font-weight:600;letter-spacing:-.01em}
+.chip{display:inline-flex;align-items:center;gap:7px;padding:5px 13px;border-radius:999px;font-size:15px;font-weight:600}
+.dot{width:9px;height:9px;border-radius:50%}
+.btn{height:56px;border-radius:14px;background:var(--sf2);font-size:18px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn.teal{background:var(--teal);color:var(--teal-ink)}
+.btn.amber{background:var(--amber);color:var(--amber-ink)}
+.sq{width:80px;height:80px;border-radius:16px;background:var(--sf2);font-size:40px;font-weight:600}
+.sq.s{width:52px;height:52px;border-radius:12px;font-size:28px}
+.ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tabs{display:flex;gap:6px;background:var(--sf);padding:5px;border-radius:14px}
+.tabs button{height:42px;padding:0 18px;border-radius:10px;font-size:16px;font-weight:600;background:transparent;color:var(--mut)}
+.tabs button.on{background:var(--sf2);color:var(--ink)}
+.lbl{color:var(--mut);font-size:13px;margin-bottom:6px}
+.field{height:52px;border-radius:12px;background:var(--bg);border:1.5px solid var(--sf2);display:flex;align-items:center;padding:0 14px;font-size:20px;font-weight:600}
+.opt{text-align:left;border-radius:12px;background:var(--sf2);padding:10px 14px;width:100%}
+.opt b{display:block;font-size:17px}.opt span{font-size:13px;color:var(--mut)}
+.opt.teal{background:var(--teal);color:var(--teal-ink)}.opt.teal span{color:var(--teal-ink)}
+.codes{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.code{height:52px;border-radius:10px;background:var(--bg);border:1.5px solid var(--sf2);display:flex;flex-direction:column;align-items:center;justify-content:center}
+.code b{font-size:16px}.code span{font-size:11px;color:var(--dim)}
+.code.has{background:rgba(60,198,181,.12);border-color:rgba(60,198,181,.45)}.code.has span{color:var(--teal)}
+.code.new{border-color:rgba(242,176,74,.6)}.code.new span{color:var(--amber)}
+.code.now{border-color:var(--amber)}
+.tgl{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:15px;padding:6px 0}
+.sw{width:52px;height:30px;border-radius:15px;background:var(--sf2);position:relative;flex:none}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:var(--mut);transition:left .15s}
+.sw.on{background:var(--teal)}.sw.on::after{left:25px;background:var(--teal-ink)}
+.row{display:grid;grid-template-columns:62px 150px 110px 1fr 92px;gap:12px;align-items:center;padding:8px 10px;border-radius:10px;background:var(--bg);font-size:15px;margin-bottom:6px}
+.overlay{position:absolute;inset:0;background:rgba(5,12,18,.82);display:none;align-items:flex-end;justify-content:center;z-index:10}
+.overlay.on{display:flex}
+#kb{width:1024px;background:var(--sf);border-radius:20px 20px 0 0;padding:14px 16px 16px}
+#kb .keys{display:flex;flex-direction:column;gap:7px;margin-top:10px}
+#kb .kr{display:flex;gap:7px;justify-content:center}
+#kb .kr button{height:54px;min-width:80px;flex:1;max-width:92px;border-radius:10px;background:var(--sf2);font-size:21px;font-weight:600}
+#kb.num .kr button{max-width:160px;height:58px}
+#toast{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:12px 20px;border-radius:12px;font-size:16px;font-weight:600;display:none;z-index:20;max-width:900px}
+.scroll{overflow-y:auto;-webkit-overflow-scrolling:touch}
+.scroll::-webkit-scrollbar{width:0}
+</style>
+</head>
+<body>
+
+<!-- ============================== 1 · IDLE -->
+<section id="v-idle" class="view" style="padding:30px 36px;gap:28px">
+  <div style="flex:1.35;display:flex;flex-direction:column;gap:16px;min-width:0">
+    <div style="display:flex;align-items:center;gap:12px">
+      <span class="chip" style="background:rgba(60,198,181,.14);color:var(--teal)"><span class="dot" style="background:var(--teal)"></span>Tersedia</span>
+      <span class="mut" id="i-next" style="font-size:15px"></span>
+    </div>
+    <div>
+      <div class="mut" style="font-size:15px;letter-spacing:.08em;text-transform:uppercase">Ruang rapat</div>
+      <div class="big ell" id="i-room" style="font-size:56px;font-weight:700;line-height:1.08"></div>
+    </div>
+    <div style="display:flex;align-items:baseline;gap:22px">
+      <span class="big" id="i-clock" style="font-size:104px;line-height:1"></span>
+      <span class="mut" id="i-date" style="font-size:22px;line-height:1.35"></span>
+    </div>
+    <div style="display:flex;gap:14px">
+      <div class="card" style="flex:1;padding:14px 18px;border-radius:16px"><div id="i-temp" style="font-size:30px;font-weight:600">–</div><div class="mut" style="font-size:14px">Suhu ruangan</div></div>
+      <div class="card" style="flex:1;padding:14px 18px;border-radius:16px"><div id="i-rh" style="font-size:30px;font-weight:600">–</div><div class="mut" style="font-size:14px">Kelembapan</div></div>
+      <div class="card" style="flex:1;padding:14px 18px;border-radius:16px"><div id="i-ac" style="font-size:30px;font-weight:600">–</div><div class="mut" style="font-size:14px">AC</div></div>
+    </div>
+    <div style="display:flex;gap:14px;margin-top:auto">
+      <button class="btn teal" id="i-start" style="flex:1;height:68px;font-size:22px;border-radius:16px">▶&nbsp; Mulai pakai sekarang · 60 menit</button>
+      <button class="btn" data-go="settings" aria-label="Pengaturan" style="width:68px;height:68px;border-radius:16px;font-size:30px">⚙</button>
+    </div>
+  </div>
+  <div style="flex:1;display:flex;flex-direction:column;gap:16px;min-width:0">
+    <div class="card" style="padding:18px 20px;flex:1;min-height:0">
+      <div class="mut" style="font-size:18px;font-weight:600;margin-bottom:8px">Jadwal hari ini</div>
+      <div id="i-sched"></div>
+    </div>
+    <div class="card" style="padding:16px 18px;display:flex;gap:16px;align-items:center">
+      <div style="background:#fff;border-radius:10px;padding:6px;line-height:0;width:120px;height:120px;flex:none"><img id="i-qr" src="/api/qr.svg" alt="QR booking" style="width:108px;height:108px"></div>
+      <div style="min-width:0">
+        <div style="font-size:19px;font-weight:600">Pindai untuk booking</div>
+        <div class="mut" style="font-size:14px;margin-top:4px">Pilih jam kosong lewat HP. Tautan contoh, belum terhubung ke sistem booking.</div>
+        <div id="i-url" class="ell" style="color:var(--teal);font-size:13px;margin-top:8px"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== 2 · SEDANG DIPAKAI -->
+<section id="v-meet" class="view" style="padding:22px 28px;flex-direction:column;gap:14px">
+  <div style="display:flex;align-items:center;gap:18px">
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="chip" style="background:rgba(242,176,74,.16);color:var(--amber);font-size:14px"><span class="dot" style="background:var(--amber)"></span>Sedang dipakai</span>
+        <span class="mut ell" id="m-room" style="font-size:15px"></span>
+      </div>
+      <div class="big ell" id="m-title" style="font-size:34px;font-weight:700;margin-top:6px"></div>
+    </div>
+    <div class="card" style="width:330px;padding:12px 16px;border-radius:16px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <div><div class="mut" style="font-size:13px">Berjalan</div><div class="big" id="m-elapsed" style="font-size:30px">00:00</div></div>
+        <div style="text-align:right"><div class="mut" style="font-size:13px">Selesai</div><div class="big" id="m-end" style="font-size:30px">--:--</div></div>
+      </div>
+      <div style="height:8px;border-radius:4px;background:var(--sf2);margin-top:8px;overflow:hidden"><div id="m-bar" style="height:8px;width:0;background:var(--amber)"></div></div>
+      <div style="display:flex;justify-content:space-between;margin-top:6px"><span class="mut" id="m-left" style="font-size:12px"></span><button id="m-extend" style="background:none;color:var(--teal);font-size:13px;font-weight:600;padding:0">+15 menit</button></div>
+    </div>
+  </div>
+  <div style="display:flex;gap:16px;flex:1;min-height:0">
+    <div class="card" style="flex:.9;padding:18px 22px;display:flex;flex-direction:column;min-width:0">
+      <div class="mut" style="font-size:15px">Suhu ruangan</div>
+      <div class="big" style="font-size:100px;line-height:1;margin-top:4px"><span id="m-temp">–</span><span class="mut" style="font-size:38px;font-weight:500"> °C</span></div>
+      <div style="display:flex;gap:28px;margin-top:14px">
+        <div><div class="mut" style="font-size:13px">Kelembapan</div><div id="m-rh" style="font-size:26px;font-weight:600">–</div></div>
+        <div><div class="mut" style="font-size:13px">Terasa seperti</div><div id="m-feel" style="font-size:26px;font-weight:600">–</div></div>
+        <div><div class="mut" style="font-size:13px">Target</div><div id="m-target" style="font-size:26px;font-weight:600">–</div></div>
+      </div>
+      <div style="margin-top:auto">
+        <div class="mut" style="font-size:12px;margin-bottom:4px">30 menit terakhir</div>
+        <svg id="m-spark" width="100%" height="64" viewBox="0 0 300 64" preserveAspectRatio="none"></svg>
+        <div style="display:flex;justify-content:space-between;font-size:12px"><span class="mut" id="m-sparkl"></span><span style="color:var(--teal)">garis = target</span></div>
+      </div>
+    </div>
+    <div style="flex:1.1;display:flex;flex-direction:column;gap:14px;min-width:0">
+      <div class="card" style="padding:16px 20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span class="mut" style="font-size:15px">Kontrol AC</span><span class="mut ell" id="m-last" style="font-size:13px"></span></div>
+        <div style="display:flex;align-items:center;gap:12px;margin-top:12px">
+          <button id="m-power" style="width:132px;height:80px;border-radius:16px;font-size:26px;font-weight:700">–</button>
+          <div style="flex:1;display:flex;align-items:center;justify-content:flex-end;gap:12px">
+            <button class="sq" id="m-down" aria-label="Turunkan">−</button>
+            <div style="width:116px;text-align:center"><div class="big" id="m-sp" style="font-size:52px;line-height:1">–</div><div class="mut" id="m-spl" style="font-size:13px;margin-top:4px">setpoint</div></div>
+            <button class="sq" id="m-up" aria-label="Naikkan">+</button>
+          </div>
+        </div>
+      </div>
+      <div id="m-rec"></div>
+      <div style="display:flex;gap:12px;margin-top:auto">
+        <button class="btn" id="m-endbtn" style="flex:1">Akhiri rapat</button>
+        <button class="btn" data-go="settings" aria-label="Pengaturan" style="width:56px;font-size:26px">⚙</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== 3 · PENGATURAN -->
+<section id="v-set" class="view" style="padding:18px 28px;flex-direction:column;gap:14px">
+  <div style="display:flex;align-items:center;gap:16px">
+    <button class="btn" id="s-back" style="height:48px;padding:0 18px 0 14px;font-size:16px;background:var(--sf)">‹&nbsp; Kembali</button>
+    <div class="big" style="font-size:28px;font-weight:700">Pengaturan</div>
+    <span class="mut ell" id="s-sub" style="font-size:14px"></span>
+    <div class="tabs" style="margin-left:auto">
+      <button data-tab="room">Ruangan</button><button data-tab="remote">Remote AC</button><button data-tab="log">Riwayat</button>
+    </div>
+  </div>
+
+  <div id="t-room" style="flex:1;min-height:0;display:none;gap:16px">
+    <div class="card" style="flex:1;padding:18px 22px;display:flex;flex-direction:column;gap:12px">
+      <div><div class="lbl">Nama ruangan</div><button class="field" id="r-name" style="width:100%;text-align:left"></button></div>
+      <div><div class="lbl">Target suhu nyaman</div>
+        <div style="display:flex;align-items:center;gap:12px"><button class="sq s" id="r-tdown">−</button><div class="big" id="r-target" style="width:110px;text-align:center;font-size:34px"></div><button class="sq s" id="r-tup">+</button></div></div>
+      <div><div class="lbl">Otomasi</div>
+        <div class="tgl"><span>Mulai rapat otomatis dari jadwal</span><button class="sw" data-auto="start_from_schedule"></button></div>
+        <div class="tgl"><span>Nyalakan AC saat rapat dimulai</span><button class="sw" data-auto="on_at_start"></button></div>
+        <div class="tgl"><span>Matikan AC saat rapat selesai</span><button class="sw" data-auto="off_at_end"></button></div>
+      </div>
+      <button id="r-pin" style="margin-top:auto;background:none;color:var(--teal);font-size:15px;font-weight:600;text-align:left;padding:0">Ganti PIN teknisi</button>
+    </div>
+    <div class="card" style="flex:1;padding:18px 22px;display:flex;flex-direction:column;gap:10px">
+      <div class="lbl" style="margin:0">Dimensi ruangan</div>
+      <div id="r-dims"></div>
+      <div style="display:flex;gap:10px">
+        <div style="flex:1;background:var(--bg);border-radius:12px;padding:10px 12px"><div class="mut" style="font-size:12px">Luas</div><div id="r-area" style="font-size:20px;font-weight:600"></div></div>
+        <div style="flex:1;background:var(--bg);border-radius:12px;padding:10px 12px"><div class="mut" style="font-size:12px">Volume</div><div id="r-vol" style="font-size:20px;font-weight:600"></div></div>
+        <div style="flex:1.2;background:var(--bg);border-radius:12px;padding:10px 12px"><div class="mut" style="font-size:12px">AC yang cocok</div><div id="r-pk" style="font-size:20px;font-weight:600"></div></div>
+      </div>
+      <button class="btn teal" id="r-save" style="margin-top:auto">Simpan pengaturan ruangan</button>
+    </div>
+  </div>
+
+  <div id="t-remote" style="flex:1;min-height:0;display:none;gap:16px">
+    <div class="card" style="flex:1.15;padding:16px 20px;display:flex;flex-direction:column;gap:12px;min-width:0">
+      <button id="p-card" style="display:flex;align-items:center;gap:12px;text-align:left;border-radius:14px;background:var(--bg);padding:10px 14px">
+        <div style="flex:1;min-width:0"><div class="mut" style="font-size:13px">Profil remote aktif</div><div class="ell" id="p-name" style="font-size:20px;font-weight:600"></div></div>
+        <span class="chip" id="p-count" style="font-size:14px"></span>
+        <span style="color:var(--teal);font-size:15px;font-weight:600">Ganti ▾</span>
+      </button>
+      <div><div class="lbl">Protokol</div>
+        <div style="display:flex;gap:6px;background:var(--bg);padding:4px;border-radius:12px">
+          <span style="flex:1;height:40px;border-radius:9px;background:var(--sf2);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600">IR rekam-ulang (lokal)</span>
+          <span style="flex:1;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--dim)">Pustaka merek Tuya · segera</span>
+        </div></div>
+      <div><div class="lbl" id="c-lbl">Dataset kode · mode COOL, kipas AUTO</div><div class="codes" id="c-grid"></div></div>
+      <div class="mut" id="c-note" style="margin-top:auto;font-size:13px;line-height:1.4"></div>
+    </div>
+    <div class="card" id="rp" style="flex:1;padding:16px 20px;display:flex;flex-direction:column;gap:8px;min-width:0"></div>
+  </div>
+
+  <div id="t-log" class="card" style="flex:1;min-height:0;display:none;flex-direction:column;gap:10px;padding:14px 20px">
+    <div style="display:flex;gap:8px;align-items:center" id="l-filters"></div>
+    <div class="row" style="background:none;color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.06em;margin:0"><span>Jam</span><span>Perintah</span><span>Kode IR</span><span>Sumber</span><span style="text-align:right">Hasil</span></div>
+    <div class="scroll" id="l-rows" style="flex:1;min-height:0"></div>
+  </div>
+</section>
+
+<div class="overlay" id="ov"><div id="kb"></div></div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => Array.from(document.querySelectorAll(s));
+const HARI = ["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"];
+const BULAN = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+const BRANDS = ["Daikin","Panasonic","Sharp","LG","Gree","Samsung","Lainnya"];
+let S = null, skew = 0, view = "idle", tab = "remote", lastTouch = Date.now();
+let SET = null, PROF = null, draftUI = null, rpMode = "menu", logKind = "", busy = false;
+
+const fmt = (x, d = 1) => x == null ? "–" : Number(x).toFixed(d).replace(".", ",");
+const hm = (ts) => { const d = new Date(ts * 1000); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
+const mmss = (s) => { s = Math.max(0, Math.floor(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0"); };
+const now = () => Date.now() / 1000 + skew;
+const esc = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const keyLabel = (k) => k === "off" ? "OFF" : k.split("_")[1] + "°";
+const keyHuman = (k) => k === "off" ? "MATI (OFF)" : "COOL " + k.split("_")[1] + " °C, kipas AUTO";
+
+function toast(msg, ms) { const t = $("#toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = "none", ms || 3200); }
+
+async function api(path, method, body) {
+  const r = await fetch(path, { method: method || "GET", headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+  let j = null; try { j = await r.json(); } catch (e) {}
+  if (!r.ok) { const e = new Error((j && j.detail) || ("HTTP " + r.status)); e.status = r.status; throw e; }
+  return j;
+}
+
+// ---------------------------------------------------------------- navigasi
+function show(v) {
+  view = v;
+  $$(".view").forEach((e) => e.classList.remove("on"));
+  $({ idle: "#v-idle", meet: "#v-meet", settings: "#v-set" }[v]).classList.add("on");
+  if (v === "settings") openTab(tab);
+  render();
+}
+function homeView() { return S && S.meeting ? "meet" : "idle"; }
+document.addEventListener("pointerdown", () => { lastTouch = Date.now(); }, true);
+$$("[data-go=settings]").forEach((b) => b.onclick = () => askPin(() => show("settings")));
+$("#s-back").onclick = () => { if (busy) return toast("Tunggu perekaman selesai"); show(homeView()); };
+
+// ---------------------------------------------------------------- polling status
+async function poll() {
+  try {
+    const j = await api("/api/status");
+    S = j; skew = j.ts / 1000 - Date.now() / 1000;
+    if (view !== "settings") { const h = homeView(); if (h !== view) show(h); }
+    render();
+  } catch (e) { /* edge restart: coba lagi */ }
+}
+setInterval(poll, 3000);
+setInterval(() => {
+  renderClock();
+  if (view === "settings" && !busy && Date.now() - lastTouch > 180000) show(homeView());
+}, 1000);
+
+function render() {
+  if (!S) return;
+  if (view === "idle") renderIdle();
+  if (view === "meet") renderMeet();
+  if (view === "settings") $("#s-sub").textContent = S.room.name + " · mode teknisi";
+  renderClock();
+}
+
+function renderClock() {
+  const d = new Date(now() * 1000);
+  $("#i-clock").textContent = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+  $("#i-date").innerHTML = HARI[d.getDay()] + "<br>" + d.getDate() + " " + BULAN[d.getMonth()] + " " + d.getFullYear();
+  if (S && S.meeting) {
+    const m = S.meeting, t = now(), el = t - m.start_ts, left = m.end_ts - t;
+    $("#m-elapsed").textContent = mmss(el);
+    $("#m-end").textContent = hm(m.end_ts);
+    $("#m-bar").style.width = Math.min(100, Math.max(0, el / (m.end_ts - m.start_ts) * 100)) + "%";
+    $("#m-left").textContent = left > 0 ? "Sisa " + Math.ceil(left / 60) + " menit" : "Waktu habis";
+  }
+}
+
+// ---------------------------------------------------------------- 1 · idle
+function renderIdle() {
+  $("#i-room").textContent = S.room.name;
+  $("#i-temp").textContent = S.room_temp_c == null ? "–" : fmt(S.room_temp_c) + " °C";
+  $("#i-rh").textContent = S.room_rh_pct == null ? "–" : fmt(S.room_rh_pct, 0) + " %";
+  $("#i-ac").textContent = S.ac.power ? S.ac.setpoint + " °C" : "Mati";
+  $("#i-url").textContent = (S.booking_url || "").replace(/^https?:\/\//, "");
+  const nx = S.schedule.find((e) => e.state === "next");
+  $("#i-next").textContent = nx ? "Berikutnya " + nx.start + " · dalam " + Math.max(1, Math.round((nx.start_ts - now()) / 60)) + " menit" : "Tidak ada jadwal lagi hari ini";
+  $("#i-sched").innerHTML = S.schedule.length ? S.schedule.map((e) => {
+    const c = e.state === "done" ? ["transparent", "var(--dim)", "var(--dim)"] : e.state === "next" || e.state === "now" ? ["rgba(60,198,181,.12)", "var(--teal)", "var(--ink)"] : ["transparent", "var(--ink)", "var(--ink)"];
+    const meta = [e.organizer, e.people ? e.people + " orang" : "", e.state === "done" ? "selesai" : e.state === "next" ? "berikutnya" : ""].filter(Boolean).join(" · ");
+    return `<div style="display:grid;grid-template-columns:112px 1fr;gap:12px;padding:9px 12px;border-radius:12px;background:${c[0]}">
+      <span style="font-size:16px;font-weight:600;color:${c[1]}">${e.start}–${e.end}</span>
+      <div style="min-width:0"><div class="ell" style="font-size:17px;font-weight:500;color:${c[2]}">${esc(e.title)}</div><div class="mut" style="font-size:13px">${esc(meta)}</div></div></div>`;
+  }).join("") : `<div class="mut" style="font-size:15px">Belum ada jadwal.</div>`;
+}
+$("#i-qr").onerror = function () { this.parentNode.style.display = "none"; };
+$("#i-start").onclick = async () => { try { await api("/api/meeting/start", "POST", { minutes: 60 }); await poll(); } catch (e) { toast(e.message); } };
+
+// ---------------------------------------------------------------- 2 · rapat
+function renderMeet() {
+  const m = S.meeting; if (!m) return;
+  $("#m-room").textContent = S.room.name + (m.organizer ? " · " + m.organizer : "") + (m.people ? " · " + m.people + " orang" : "");
+  $("#m-title").textContent = m.title;
+  $("#m-temp").textContent = fmt(S.room_temp_c);
+  $("#m-rh").textContent = S.room_rh_pct == null ? "–" : fmt(S.room_rh_pct, 0) + " %";
+  $("#m-feel").textContent = S.feels_like_c == null ? "–" : fmt(S.feels_like_c) + " °C";
+  $("#m-target").textContent = fmt(S.room.target_c, 0) + " °C";
+  const a = S.ac, sp = a.pending_setpoint != null ? a.pending_setpoint : a.setpoint;
+  const pw = $("#m-power");
+  pw.textContent = a.power ? "ON" : "OFF";
+  pw.style.background = a.power ? "var(--teal)" : "var(--sf2)"; pw.style.color = a.power ? "var(--teal-ink)" : "var(--ink)";
+  $("#m-sp").textContent = sp + "°";
+  $("#m-spl").textContent = a.pending_setpoint != null ? "mengirim…" : a.power ? "setpoint" : "berlaku saat ON";
+  const c = S.commands.find((x) => ["power_on", "power_off", "set_temp"].includes(x.action));
+  $("#m-last").textContent = a.power_wait_s > 0 ? "Proteksi kompresor · " + Math.floor(a.power_wait_s / 60) + ":" + String(a.power_wait_s % 60).padStart(2, "0") + " lagi" :
+    c ? (c.result === "terkirim" ? "Terkirim " : c.result[0].toUpperCase() + c.result.slice(1) + " ") + hm(c.ts) + " · " + (c.code_key || "") + (c.latency_ms ? " · " + c.latency_ms + " ms" : "") : "Belum ada perintah";
+  spark();
+  const r = S.recommendation;
+  $("#m-rec").innerHTML = r ? `<div class="card" style="padding:16px 20px;border:1.5px solid rgba(242,176,74,.55);display:flex;flex-direction:column;gap:7px">
+      <div style="display:flex;align-items:center;gap:10px"><span style="color:var(--amber);font-size:18px">✦</span><span style="font-size:15px;font-weight:600;color:var(--amber)">Rekomendasi AI</span><span class="mut" style="margin-left:auto;font-size:12px">mesin aturan · ${r.rule}</span></div>
+      <div style="font-size:23px;font-weight:600">${esc(r.title)}</div>
+      <div class="mut" style="font-size:15px;line-height:1.4">${esc(r.reason)}</div>
+      <div style="display:flex;gap:10px;margin-top:4px"><button class="btn amber" style="flex:1;height:52px" onclick="recDo('apply','${r.rule}')">Terapkan</button><button class="btn" style="width:140px;height:52px;font-weight:400" onclick="recDo('dismiss','${r.rule}')">Abaikan</button></div></div>`
+    : `<div class="card mut" style="padding:16px 20px;font-size:15px"><span style="color:var(--teal)">✓</span>&nbsp; Tidak ada rekomendasi baru. Suhu dipantau terus.</div>`;
+}
+function spark() {
+  const h = S.history || [], svg = $("#m-spark"), tgt = S.room.target_c;
+  if (h.length < 2) { svg.innerHTML = ""; $("#m-sparkl").textContent = "data terkumpul…"; return; }
+  const vals = h.map((p) => p[1]).concat([tgt]), lo = Math.min(...vals) - .3, hi = Math.max(...vals) + .3, t0 = h[0][0], t1 = h[h.length - 1][0] || t0 + 1;
+  const y = (v) => (60 - (v - lo) / (hi - lo) * 56).toFixed(1);
+  const pts = h.map((p) => ((p[0] - t0) / (t1 - t0 || 1) * 300).toFixed(1) + "," + y(p[1])).join(" ");
+  svg.innerHTML = `<line x1="0" x2="300" y1="${y(tgt)}" y2="${y(tgt)}" stroke="#3CC6B5" stroke-dasharray="4 4" opacity=".6"/><polyline points="${pts}" fill="none" stroke="#EAF1F6" stroke-width="2.4" stroke-linejoin="round"/>`;
+  $("#m-sparkl").textContent = hm(h[0][0]) + " · " + fmt(h[0][1]) + " °C";
+}
+async function acCmd(action) { try { const j = await api("/api/ac", "POST", { action }); if (j.entry && j.entry.result !== "terkirim") toast(j.entry.detail || j.entry.result); else if (j.message) toast(j.message); poll(); } catch (e) { toast(e.message); } }
+$("#m-power").onclick = () => acCmd(S.ac.power ? "power_off" : "power_on");
+$("#m-up").onclick = () => { S.ac.pending_setpoint = Math.min(S.ac.sp_max, (S.ac.pending_setpoint != null ? S.ac.pending_setpoint : S.ac.setpoint) + 1); renderMeet(); acCmd("temp_up"); };
+$("#m-down").onclick = () => { S.ac.pending_setpoint = Math.max(S.ac.sp_min, (S.ac.pending_setpoint != null ? S.ac.pending_setpoint : S.ac.setpoint) - 1); renderMeet(); acCmd("temp_down"); };
+async function recDo(kind, rule) { try { const j = await api("/api/recommendation/" + kind, "POST", { rule }); if (kind === "apply" && !j.ok) toast(j.entry.detail || "Gagal"); poll(); } catch (e) { toast(e.message); poll(); } }
+window.recDo = recDo;
+$("#m-endbtn").onclick = async () => { try { await api("/api/meeting/end", "POST"); toast("Rapat diakhiri"); await poll(); } catch (e) { toast(e.message); } };
+$("#m-extend").onclick = async () => { try { await api("/api/meeting/extend", "POST", { minutes: 15 }); poll(); } catch (e) { toast(e.message); } };
+
+// ---------------------------------------------------------------- keyboard layar & PIN
+function keyboard(title, value, numeric, onOk, secret) {
+  let v = value || "", shift = true;
+  const kb = $("#kb");
+  const rows = numeric ? [["1","2","3"],["4","5","6"],["7","8","9"],["⌫","0","OK"]]
+    : [["1","2","3","4","5","6","7","8","9","0"],["q","w","e","r","t","y","u","i","o","p"],["a","s","d","f","g","h","j","k","l","-"],["⇧","z","x","c","v","b","n","m","·","⌫"],["Batal","spasi","OK"]];
+  function draw() {
+    kb.className = numeric ? "num" : "";
+    kb.innerHTML = `<div style="display:flex;align-items:center;gap:14px"><span class="mut" style="font-size:15px">${esc(title)}</span>
+      <div class="field" style="flex:1;border-color:var(--teal)">${esc(secret ? "•".repeat(v.length) : v)}<span style="width:2px;height:24px;background:var(--teal);margin-left:3px"></span></div>
+      ${numeric ? `<button class="btn" style="width:120px" data-k="Batal">Batal</button>` : ""}</div>
+      <div class="keys">${rows.map((r) => `<div class="kr">${r.map((k) => {
+        const lab = k.length === 1 && !numeric && shift ? k.toUpperCase() : k;
+        const wide = k === "spasi" ? "max-width:440px;flex:5" : k === "OK" || k === "Batal" ? "max-width:180px;flex:2" : "";
+        const col = k === "OK" ? "background:var(--teal);color:var(--teal-ink)" : "";
+        return `<button data-k="${k}" style="${wide};${col}">${lab}</button>`; }).join("")}</div>`).join("")}</div>`;
+  }
+  kb.onclick = (ev) => {
+    const b = ev.target.closest("button"); if (!b) return;
+    const k = b.dataset.k;
+    if (k === "OK") { $("#ov").classList.remove("on"); onOk(v.trim()); return; }
+    if (k === "Batal") { $("#ov").classList.remove("on"); return; }
+    if (k === "⌫") v = v.slice(0, -1);
+    else if (k === "⇧") shift = !shift;
+    else if (k === "spasi") v += " ";
+    else if (k === "·") v += " · ";
+    else { v += (!numeric && shift) ? k.toUpperCase() : k; if (shift && !numeric) shift = false; }
+    if (v.length > 40) v = v.slice(0, 40);
+    draw();
+  };
+  draw(); $("#ov").classList.add("on");
+}
+let pinOkUntil = 0;
+function askPin(then) {
+  if (Date.now() < pinOkUntil) return then();
+  keyboard("PIN teknisi", "", true, async (pin) => {
+    try { await api("/api/pin", "POST", { pin }); pinOkUntil = Date.now() + 5 * 60000; then(); }
+    catch (e) { toast("PIN salah"); }
+  }, true);
+}
+
+// ---------------------------------------------------------------- 3 · pengaturan
+function openTab(t) {
+  tab = t;
+  $$(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
+  $("#t-room").style.display = t === "room" ? "flex" : "none";
+  $("#t-remote").style.display = t === "remote" ? "flex" : "none";
+  $("#t-log").style.display = t === "log" ? "flex" : "none";
+  if (t === "room") loadRoom();
+  if (t === "remote") loadRemote();
+  if (t === "log") loadLog();
+}
+$$(".tabs button").forEach((b) => b.onclick = () => { if (busy) return toast("Tunggu perekaman selesai"); openTab(b.dataset.tab); });
+
+// --- tab ruangan
+async function loadRoom() { try { SET = await api("/api/settings"); renderRoom(); } catch (e) { toast(e.message); } }
+function sizing(r) {
+  const area = r.length_m * r.width_m, vol = area * r.height_m;
+  const btu = area * 500 * Math.max(1, r.height_m / 3) + Math.max(0, r.capacity - 2) * 600;
+  const pk = btu <= 9000 ? "1 PK" : btu <= 12000 ? "1,5 PK" : btu <= 18000 ? "2 PK" : btu <= 24000 ? "2,5 PK" : "3 PK+";
+  return { area, vol, btu, pk };
+}
+function renderRoom() {
+  const r = SET.room, z = sizing(r);
+  $("#r-name").textContent = r.name;
+  $("#r-target").textContent = fmt(r.target_c, 0) + " °C";
+  $$("[data-auto]").forEach((b) => b.classList.toggle("on", !!SET.automation[b.dataset.auto]));
+  const dims = [["length_m", "Panjang", .5, "m"], ["width_m", "Lebar", .5, "m"], ["height_m", "Tinggi", .1, "m"], ["capacity", "Kapasitas", 1, "org"]];
+  $("#r-dims").innerHTML = dims.map(([k, l, st, u]) => `<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
+      <span style="width:92px;font-size:16px">${l}</span><button class="sq s" onclick="dim('${k}',-${st})">−</button>
+      <div class="big" style="width:100px;text-align:center;font-size:26px">${k === "capacity" ? r[k] : fmt(r[k])}<span class="mut" style="font-size:14px"> ${u}</span></div>
+      <button class="sq s" onclick="dim('${k}',${st})">+</button></div>`).join("");
+  $("#r-area").textContent = fmt(z.area) + " m²";
+  $("#r-vol").textContent = fmt(z.vol) + " m³";
+  $("#r-pk").textContent = "≈ " + z.pk + " · " + Math.round(z.btu / 100) / 10 + "k BTU";
+}
+window.dim = (k, st) => { const r = SET.room, lim = { length_m: [1, 50], width_m: [1, 50], height_m: [2, 10], capacity: [1, 100] }[k]; r[k] = Math.round(Math.min(lim[1], Math.max(lim[0], r[k] + st)) * 10) / 10; renderRoom(); };
+$("#r-name").onclick = () => keyboard("Nama ruangan", SET.room.name, false, (v) => { if (v) { SET.room.name = v; renderRoom(); } });
+$("#r-tup").onclick = () => { SET.room.target_c = Math.min(30, SET.room.target_c + 1); renderRoom(); };
+$("#r-tdown").onclick = () => { SET.room.target_c = Math.max(18, SET.room.target_c - 1); renderRoom(); };
+$$("[data-auto]").forEach((b) => b.onclick = () => { SET.automation[b.dataset.auto] = !SET.automation[b.dataset.auto]; renderRoom(); });
+$("#r-save").onclick = async () => { try { SET = await api("/api/settings", "POST", { room: SET.room, automation: SET.automation }); renderRoom(); toast("Pengaturan ruangan disimpan"); poll(); } catch (e) { toast(e.message); } };
+$("#r-pin").onclick = () => keyboard("PIN lama", "", true, (old) => keyboard("PIN baru (4–8 angka)", "", true, async (nw) => {
+  try { await api("/api/pin", "POST", { pin: old, new_pin: nw }); toast("PIN diganti"); } catch (e) { toast(e.message); } }, true), true);
+
+// --- tab remote AC
+async function loadRemote() {
+  try { PROF = await api("/api/profiles"); const d = await api("/api/draft"); if (d.draft && d.draft.keys.length && rpMode === "menu") rpMode = "done"; PROF.draft = d.draft; renderRemote(); }
+  catch (e) { toast(e.message); }
+}
+function activeProf() { return PROF.profiles.find((p) => p.active) || null; }
+function renderRemote() {
+  const p = activeProf(), dk = (PROF.draft && PROF.draft.keys) || [];
+  $("#p-name").textContent = p ? p.name : "Belum ada profil";
+  const n = p ? p.count : 0, tot = PROF.wanted.length, full = n === tot;
+  const pc = $("#p-count"); pc.textContent = n + "/" + tot + " kode";
+  pc.style.background = full ? "rgba(60,198,181,.14)" : "rgba(242,176,74,.16)"; pc.style.color = full ? "var(--teal)" : "var(--amber)";
+  const cur = draftUI && draftUI.running ? draftUI.seq[draftUI.i] : null;
+  $("#c-lbl").textContent = rpMode === "test" ? "Ketuk kode untuk mengujinya di AC" : rpMode === "single" ? "Ketuk kode yang mau direkam ulang" : "Dataset kode · mode COOL, kipas AUTO";
+  $("#c-grid").innerHTML = PROF.wanted.map((k) => {
+    const has = p && p.learned.includes(k), fresh = dk.includes(k);
+    const cls = "code" + (has || fresh ? " has" : "") + (fresh ? " new" : "") + (k === cur ? " now" : "");
+    const sub = k === cur ? "merekam" : fresh ? "baru" : has ? "tersimpan" : "belum";
+    return `<button class="${cls}" onclick="codeTap('${k}')"><b>${keyLabel(k)}</b><span>${sub}</span></button>`;
+  }).join("");
+  $("#c-note").textContent = !p ? "Rekam remote AC dulu supaya panel bisa mengontrol AC." :
+    full ? "Semua kode lengkap. Panel siap mengontrol AC." : (tot - n) + " kode belum direkam. Bila setpoint itu diminta, panel memakai kode terdekat yang sudah ada.";
+  renderPanel();
+}
+function renderPanel() {
+  const rp = $("#rp"), p = activeProf();
+  if (rpMode === "menu") {
+    rp.innerHTML = `<div class="mut" style="font-size:14px;margin-bottom:2px">Pelajari remote AC</div>
+      <button class="opt teal" onclick="startLearn('full')"><b>Panduan lengkap</b><span>OFF + ${PROF.wanted.length - 1} setpoint · ${PROF.wanted.length} kode · ±5 menit</span></button>
+      <button class="opt" onclick="startLearn('quick')"><b>Cepat</b><span>OFF + 22, 24, 25, 26 °C · 5 kode</span></button>
+      <div style="display:flex;gap:8px"><button class="opt" onclick="setMode('single')"><b>Satu kode</b><span>ulang yang gagal</span></button><button class="opt" onclick="setMode('test')"><b>Uji kode</b><span>kirim &amp; amati AC</span></button></div>
+      <button class="opt" style="background:transparent;border:1.5px solid var(--sf2);margin-top:auto" onclick="exportProf()"><b>Ekspor dataset (.json)</b><span>cadangan &amp; pindah ke panel lain</span></button>`;
+  } else if (rpMode === "test" || rpMode === "single") {
+    rp.innerHTML = `<div style="font-size:18px;font-weight:600">${rpMode === "test" ? "Uji kode" : "Rekam satu kode"}</div>
+      <div class="mut" style="font-size:15px;line-height:1.45">${rpMode === "test" ? "Ketuk kode di sebelah kiri. Panel mengirim kodenya lewat SMATRUL. Amati apakah AC merespons sesuai (bunyi bip, suhu di layar AC)." : "Ketuk kode di sebelah kiri, lalu tekan tombol yang sama di remote asli sambil diarahkan ke SMATRUL."}</div>
+      <div id="rp-msg" class="mut" style="font-size:15px"></div>
+      <button class="btn" style="margin-top:auto" onclick="setMode('menu')">Selesai</button>`;
+  } else if (rpMode === "wizard") {
+    const w = draftUI, k = w.seq[w.i];
+    rp.style.border = "1.5px solid rgba(60,198,181,.55)";
+    rp.innerHTML = `<div style="display:flex;justify-content:space-between;font-size:14px" class="mut"><span>${w.title}</span><span>Langkah ${w.i + 1} dari ${w.seq.length}</span></div>
+      <div style="height:6px;border-radius:3px;background:var(--sf2);overflow:hidden"><div style="height:6px;width:${Math.round(w.i / w.seq.length * 100)}%;background:var(--teal)"></div></div>
+      <div class="big" style="font-size:40px;margin-top:4px">${k}</div>
+      <div style="font-size:16px;line-height:1.45">Atur remote asli ke <b>${keyHuman(k)}</b>, arahkan ke SMATRUL dari jarak ±10 cm, lalu tekan tombolnya sekali.</div>
+      <div style="display:flex;align-items:center;gap:12px;margin-top:4px">
+        <div id="w-cd" style="width:56px;height:56px;border-radius:50%;border:3px solid ${w.err ? "var(--amber)" : "var(--teal)"};display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:600">${w.running ? w.left : "!"}</div>
+        <span class="mut" style="font-size:14px">${w.running ? "Menunggu sinyal IR… (batas 15 detik)" : esc(w.err || "")}</span></div>
+      <div style="display:flex;gap:8px;margin-top:auto">${w.running
+        ? `<button class="btn" style="flex:1" onclick="wizStop()">Berhenti</button>`
+        : `<button class="btn teal" style="flex:1" onclick="wizRun()">Ulangi</button><button class="btn" style="flex:1" onclick="wizSkip()">Lewati</button><button class="btn" style="flex:1" onclick="wizStop()">Selesai</button>`}</div>`;
+  } else if (rpMode === "done") {
+    const dk = (PROF.draft && PROF.draft.keys) || [], draftProf = PROF.draft && PROF.draft.profile_id ? PROF.profiles.find((x) => x.id === PROF.draft.profile_id) : null;
+    const merged = new Set((draftProf ? draftProf.learned : []).concat(dk));
+    if (!draftUI || !draftUI.save) draftUI = Object.assign(draftUI || {}, { save: { name: draftProf ? draftProf.name : "Profil baru", brand: draftProf ? draftProf.brand : "" } });
+    const sv = draftUI.save, full = merged.size === PROF.wanted.length;
+    rp.style.border = "1.5px solid rgba(60,198,181,.55)";
+    rp.innerHTML = `<div style="display:flex;align-items:center;gap:10px"><span style="width:34px;height:34px;border-radius:50%;background:rgba(60,198,181,.16);color:var(--teal);display:flex;align-items:center;justify-content:center;font-size:18px">✓</span>
+        <div><div style="font-size:18px;font-weight:600">Rekaman selesai</div><div class="mut" style="font-size:13px">${dk.length} kode baru · belum disimpan</div></div></div>
+      <div><div class="lbl">Nama profil</div><button class="field" style="width:100%;text-align:left;border-color:var(--teal);height:48px;font-size:18px" onclick="nameProf()">${esc(sv.name)}</button></div>
+      <div><div class="lbl">Merek AC</div><div style="display:flex;gap:6px;flex-wrap:wrap">${BRANDS.map((b) => `<button style="height:36px;padding:0 11px;border-radius:10px;font-size:14px;font-weight:600;background:${sv.brand === b ? "var(--teal)" : "var(--sf2)"};color:${sv.brand === b ? "var(--teal-ink)" : "var(--ink)"}" onclick="pickBrand('${b}')">${b}</button>`).join("")}</div></div>
+      <div style="display:flex;justify-content:space-between;background:var(--bg);border-radius:12px;padding:10px 14px;font-size:14px"><span class="mut">Setelah disimpan</span><span style="font-weight:600;color:${full ? "var(--teal)" : "var(--amber)"}">${merged.size}/${PROF.wanted.length} kode · jadi profil aktif</span></div>
+      <div style="display:flex;gap:10px;margin-top:auto"><button class="btn teal" style="flex:1" onclick="saveDraft()">Simpan profil</button><button class="btn" style="width:120px;font-weight:400" onclick="discardDraft()">Buang</button></div>`;
+  } else if (rpMode === "picker") {
+    rp.style.border = "1.5px solid rgba(60,198,181,.55)";
+    rp.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:17px;font-weight:600">Pilih profil remote</span><span class="mut" style="font-size:13px">${PROF.profiles.length} tersimpan</span></div>
+      <div class="scroll" style="display:flex;flex-direction:column;gap:8px;max-height:270px">${PROF.profiles.map((x) => `<button onclick="activate('${x.id}')" style="display:flex;align-items:center;gap:12px;text-align:left;border:1.5px solid ${x.active ? "var(--teal)" : "var(--sf2)"};border-radius:12px;background:${x.active ? "rgba(60,198,181,.10)" : "var(--bg)"};padding:9px 14px;flex:none">
+        <span style="width:20px;height:20px;border-radius:50%;border:2px solid ${x.active ? "var(--teal)" : "var(--dim)"};display:flex;align-items:center;justify-content:center"><span style="width:10px;height:10px;border-radius:50%;background:${x.active ? "var(--teal)" : "transparent"}"></span></span>
+        <div style="flex:1;min-width:0"><div class="ell" style="font-size:16px;font-weight:600">${esc(x.name)}</div><div class="mut" style="font-size:12px">${x.active ? "Aktif · " : ""}${esc(x.brand || "IR rekam-ulang")}</div></div>
+        <span style="font-size:13px;font-weight:600;color:${x.count === x.total ? "var(--teal)" : "var(--amber)"}">${x.count}/${x.total}</span></button>`).join("") || `<div class="mut">Belum ada profil.</div>`}</div>
+      <button onclick="newProf()" style="border:1.5px dashed #2E4559;border-radius:12px;background:transparent;color:var(--teal);padding:10px 14px;font-size:15px;font-weight:600;text-align:left">+ Profil baru, lalu rekam kodenya</button>
+      <div class="mut" style="font-size:12px;line-height:1.4;margin-top:auto">Ganti profil berlaku untuk perintah berikutnya dan dicatat di Riwayat. AC tidak dikirimi perintah saat profil diganti.</div>
+      <button class="btn" style="height:46px;font-weight:400" onclick="setMode('menu')">Tutup</button>`;
+  }
+  if (!["wizard", "done", "picker"].includes(rpMode)) rp.style.border = "none";
+}
+window.setMode = (m) => { rpMode = m; renderRemote(); };
+$("#p-card").onclick = () => { if (busy) return; rpMode = rpMode === "picker" ? "menu" : "picker"; renderRemote(); };
+
+window.startLearn = async (mode, profileId) => {
+  const p = activeProf();
+  const pid = profileId === undefined ? (p ? p.id : null) : profileId;
+  try { await api("/api/draft/start", "POST", { profile_id: pid, mode }); } catch (e) { return toast(e.message); }
+  PROF.draft = { profile_id: pid, keys: [] };
+  const seq = mode === "quick" ? PROF.quick : PROF.wanted.slice();
+  draftUI = { title: mode === "quick" ? "Belajar cepat" : "Panduan lengkap", seq, i: 0, running: false, left: 15 };
+  rpMode = "wizard"; wizRun();
+};
+window.wizRun = async () => {
+  const w = draftUI, k = w.seq[w.i], my = (w.token = Math.random());
+  w.running = true; w.err = null; w.left = 15; busy = true; renderRemote();
+  clearInterval(w.cd); w.cd = setInterval(() => { w.left = Math.max(0, w.left - 1); const e = $("#w-cd"); if (e && w.running) e.textContent = w.left; }, 1000);
+  try {
+    const j = await api("/api/learn/" + k + "?timeout=15&source=settings", "POST");
+    if (w.token !== my) return;
+    PROF.draft.keys = j.draft_keys; clearInterval(w.cd); w.running = false; busy = false;
+    if (w.i + 1 >= w.seq.length) { draftUI.save = null; rpMode = "done"; renderRemote(); return; }
+    w.i++; wizRun();
+  } catch (e) {
+    if (w.token !== my) return;
+    clearInterval(w.cd); w.running = false; busy = false;
+    w.err = e.status === 408 ? "Tidak ada sinyal tertangkap. Dekatkan remote lalu ulangi." : e.message; renderRemote();
+  }
+};
+window.wizSkip = () => { const w = draftUI; if (w.i + 1 >= w.seq.length) return wizStop(); w.i++; wizRun(); };
+window.wizStop = () => {
+  const w = draftUI; w.token = 0; clearInterval(w.cd); w.running = false; busy = false;
+  if (PROF.draft && PROF.draft.keys.length) { draftUI.save = null; rpMode = "done"; }
+  else { api("/api/draft/discard", "POST").catch(() => {}); rpMode = "menu"; }
+  renderRemote();
+};
+window.codeTap = async (k) => {
+  if (busy) return;
+  if (rpMode === "test") {
+    const m = $("#rp-msg"); m.textContent = "Mengirim " + k + "…";
+    try { const j = await api("/api/test/" + k + "?source=settings", "POST"); m.textContent = "Terkirim " + k + " (dari " + j.from + "). Apakah AC merespons?"; }
+    catch (e) { m.textContent = e.message; }
+  } else if (rpMode === "single") {
+    const p = activeProf();
+    if (!PROF.draft) { try { await api("/api/draft/start", "POST", { profile_id: p ? p.id : null, mode: "single" }); PROF.draft = { profile_id: p ? p.id : null, keys: [] }; } catch (e) { return toast(e.message); } }
+    draftUI = { title: "Satu kode", seq: [k], i: 0, running: false, left: 15 }; rpMode = "wizard"; wizRun();
+  }
+};
+window.nameProf = () => keyboard("Nama profil", draftUI.save.name, false, (v) => { if (v) { draftUI.save.name = v; renderPanel(); } });
+window.pickBrand = (b) => {
+  const sv = draftUI.save, auto = !sv.name || sv.name === "Profil baru" || BRANDS.some((x) => sv.name.startsWith(x + " · "));
+  sv.brand = b; if (auto && b !== "Lainnya") sv.name = b + " · " + S.room.name; renderPanel();
+};
+window.saveDraft = async () => {
+  try { const j = await api("/api/draft/save", "POST", { name: draftUI.save.name, brand: draftUI.save.brand, activate: true });
+    toast("Profil tersimpan: " + j.profile.name + " · " + j.profile.count + "/" + j.profile.total + " kode"); draftUI = null; rpMode = "menu"; loadRemote(); }
+  catch (e) { toast(e.message); }
+};
+window.discardDraft = async () => { try { await api("/api/draft/discard", "POST"); draftUI = null; rpMode = "menu"; toast("Rekaman dibuang. Profil lama tidak berubah."); loadRemote(); } catch (e) { toast(e.message); } };
+window.activate = async (id) => {
+  const p = activeProf(); if (p && p.id === id) { rpMode = "menu"; return renderRemote(); }
+  try { await api("/api/profiles/" + id + "/activate", "POST"); rpMode = "menu"; toast("Profil diganti. Berlaku untuk perintah berikutnya."); loadRemote(); } catch (e) { toast(e.message); }
+};
+window.newProf = () => startLearn("full", null);
+window.exportProf = async () => {
+  const p = activeProf(); if (!p) return toast("Belum ada profil");
+  try { const j = await api("/api/profiles/" + p.id + "/export", "POST"); toast("Tersimpan di Pi: " + j.path, 6000); } catch (e) { toast(e.message); }
+};
+
+// --- tab riwayat
+const KINDS = [["", "Semua"], ["panel", "Panel"], ["ai", "Rekomendasi AI"], ["auto", "Otomatis"], ["learn", "Remote"], ["fail", "Gagal"]];
+const ACT = { power_on: "Power ON", power_off: "Power OFF", set_temp: "Setpoint", learn: "Rekam kode", test: "Uji kode", profile: "Profil", save_profile: "Simpan profil", dismiss: "Abaikan saran", meeting_start: "Rapat mulai", meeting_end: "Rapat selesai", meeting_extend: "Rapat +15", settings: "Pengaturan", pin: "PIN" };
+const SRC = (s) => s === "panel" ? "Panel · manual" : s.startsWith("ai:") ? "Rekomendasi AI · " + s.slice(3) : s.startsWith("auto:") ? "Otomatis · " + s.slice(5) : s === "settings" ? "Pengaturan" : s;
+async function loadLog() {
+  $("#l-filters").innerHTML = KINDS.map(([k, l]) => `<button class="chip" style="font-size:14px;background:${logKind === k ? "var(--teal)" : "var(--sf2)"};color:${logKind === k ? "var(--teal-ink)" : "var(--ink)"}" onclick="logFilter('${k}')">${l}</button>`).join("") + `<span class="mut" id="l-count" style="margin-left:auto;font-size:13px"></span>`;
+  try {
+    const rows = await api("/api/commands?limit=60" + (logKind ? "&kind=" + logKind : ""));
+    $("#l-count").textContent = rows.length + " perintah terakhir";
+    $("#l-rows").innerHTML = rows.map((r) => {
+      const ok = ["terkirim", "ok", "tersimpan", "direkam"].includes(r.result);
+      const cmd = (ACT[r.action] || r.action) + (r.action === "set_temp" && r.setpoint ? " " + r.setpoint + " °C" : "");
+      return `<div class="row"><span class="mut">${hm(r.ts)}</span><span class="ell" style="font-weight:600">${esc(cmd)}</span><span class="ell" style="font-family:'DejaVu Sans Mono',monospace;font-size:14px">${esc(r.code_key || "—")}</span>
+        <span class="mut ell">${esc(SRC(r.source || ""))}${r.detail ? " · " + esc(r.detail) : ""}</span><span style="text-align:right;font-weight:600;color:${ok ? "var(--teal)" : "var(--amber)"}">${esc(r.result)}</span></div>`;
+    }).join("") || `<div class="mut">Belum ada perintah.</div>`;
+  } catch (e) { toast(e.message); }
+}
+window.logFilter = (k) => { logKind = k; loadLog(); };
+
+poll();
+show("idle");
+</script>
+</body>
+</html>
