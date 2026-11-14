@@ -1,0 +1,38 @@
+CASING PANEL DINDING — LCD 7" + Raspberry Pi Zero 2 W (Smart HVAC)
+
+Ukuran luar : 173,7 x 124,8 x 35 mm (32 mm kotak depan + 3 mm pelat)
+Berat       : ±200 g PETG (front ±110 g, back ±90 g)
+
+PENTING — UKUR LCD DULU
+Nilai bawaan = modul 7" kapasitif 1024x600, kaca 164,9 x 100 mm, tebal 6 mm,
+area gambar 155 x 87 mm di tengah. Kalau LCD Anda beda, buka panel_dinding_lcd7.scad
+di OpenSCAD, ubah angka bertanda (*), lalu ekspor ulang STL (F6 lalu F7):
+  lcd_w, lcd_h  = ukuran kaca paling luar
+  lcd_t         = tebal kaca + panel di tepinya (bukan PCB)
+  view_w, view_h, view_dx = area gambar yang menyala dan gesernya dari tengah
+  back_depth    = tinggi PCB driver + Pi + kabel di belakang panel (bawaan 24 mm)
+Cetak uji cepat: front.stl dengan tinggi 4 mm saja (potong di slicer) untuk cek pas.
+
+SETELAN ORCASLICER (Ender 5 Plus, PETG)
+- Layer 0,2 mm, 4 dinding, top/bottom 5 lapis, infill 25 % gyroid
+- Nozzle 235–240 °C, bed 75–80 °C, kipas 30–50 %
+- front.stl: muka layar menghadap bed (sudah begitu orientasinya). Support: TIDAK perlu
+  (jendela chamfer 45°; lubang ventilasi 2,2 mm cukup dijembatani).
+- back.stl : sisi datar (sisi tembok) menghadap bed. Support: tidak perlu.
+- Brim 5 mm disarankan (part lebar, PETG suka terangkat di sudut).
+
+PERAKITAN
+1. Pasang LCD ke front, muka kaca menghadap jendela.
+2. Pi Zero 2 W: kalau LCD Anda punya dudukan Pi di punggungnya, pakai itu.
+   Kalau tidak, pasang di 4 tiang pelat belakang (sekrup M2.5 x 6).
+3. Tempel busa/double tape 1,5 mm di ujung 4 tiang penekan pelat belakang.
+4. Tutup dengan pelat belakang, 4 sekrup M3 x 10 kepala benam (self-tapping ke boss).
+5. Dinding: 2 sekrup + fischer berjarak 100 mm (horizontal), kepala sekrup ≤ 8 mm,
+   sisakan 3–4 mm menonjol, lalu gantung di lubang keyhole dan tarik ke bawah.
+6. Kabel daya USB: lewat takik di dinding bawah (kabel menempel tembok)
+   atau lewat lubang Ø14 mm di pelat bila kabel tanam.
+
+CATATAN
+- Jangan pasang SMATRUL di dalam casing ini: sensor suhunya akan membaca panas Pi/LCD
+  dan IR-nya harus melihat AC. Letakkan terpisah (lihat TC-38).
+- Pasang panel di luar jalur hembusan AC dan jauh dari sinar matahari langsung.
