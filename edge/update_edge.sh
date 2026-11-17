@@ -78,7 +78,7 @@ echo "== 5/5 cek"
 curl -s http://127.0.0.1:8080/api/profiles | /opt/hvac/venv/bin/python -c '
 import json,sys; d=json.load(sys.stdin)
 print("   profil aktif:", d["active"] or "-")
-for p in d["profiles"]: print(f"   - {p[\"name\"]}: {p[\"count\"]}/{p[\"total\"]} kode")'
+for p in d["profiles"]: print("   - %s: %s/%s kode" % (p["name"], p["count"], p["total"]))' || echo "   (daftar profil tidak terbaca)"
 curl -fs -o /dev/null http://127.0.0.1:8080/api/qr.svg && echo "   QR booking: OK" || echo "   QR booking: tidak tersedia"
 echo
 echo "Selesai. Panel memuat ulang. PIN teknisi = [panel] technician_pin di /etc/hvac/edge.toml (bawaan 0000)."
