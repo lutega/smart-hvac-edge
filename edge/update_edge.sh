@@ -40,6 +40,12 @@ WantedBy=multi-user.target
 UNIT
 systemctl daemon-reload
 systemctl enable hvac-hotspot.service >/dev/null 2>&1 || true
+# hotspot dinonaktifkan sampai diputuskan ulang: kembalikan ke Wi-Fi biasa bila masih menyala
+rm -f /etc/hvac/hotspot.enabled
+if [[ -f /etc/hvac/hotspot.state ]] || nmcli -t -f NAME connection show | grep -Fxq hvac-hotspot; then
+  echo "   hotspot dimatikan, internet dikembalikan ke Wi-Fi bawaan (koneksi bisa putus ±30 detik)"
+  /opt/hvac/netctl.sh hotspot-off >/dev/null || true
+fi
 install -d -o "$PI_USER" -g "$PI_USER" /var/lib/hvac /var/lib/hvac/remotes /var/lib/hvac/export
 chown -R "$PI_USER:$PI_USER" /var/lib/hvac
 [[ -f /var/lib/hvac/codes.json ]] && cp -n /var/lib/hvac/codes.json /var/lib/hvac/codes.before-v03.json || true

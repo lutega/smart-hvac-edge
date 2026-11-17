@@ -10,6 +10,7 @@ UP_CON=hvac-uplink                       # profil internet di dongle saat mode "
 HS_CONF=/etc/hvac/hotspot.conf          # SSID & password hotspot (root:pi 640)
 HS_STATE=/etc/hvac/hotspot.state        # profil Wi-Fi wlan0 yang dinonaktifkan selama mode "tukar"
 NMCLI="nmcli"
+HS_ENABLED=/etc/hvac/hotspot.enabled     # hotspot hanya boleh menyala bila file ini ada (bawaan: dinonaktifkan)
 
 supports_ap() {                           # radio interface $1 bisa jadi access point?
   local phy; phy=$(cat /sys/class/net/"$1"/phy80211/name 2>/dev/null) || return 1
@@ -135,9 +136,11 @@ hotspot-status)
   [[ -n "$LEASES" ]] && CLIENTS=$(awk '{printf "%s{\"mac\":\"%s\",\"ip\":\"%s\",\"name\":\"%s\"}", (NR>1?",":""), $2, $3, $4}' "$LEASES" | sed 's/^/[/; s/$/]/')
   [[ "$CLIENTS" == "" ]] && CLIENTS="[]"
   CH=$($NMCLI -g 802-11-wireless.channel connection show "$AP_CON" 2>/dev/null); [[ -n "$CH" ]] || CH=$(sta_channel)
-  echo "{\"ok\":true,\"on\":$ON,\"iface\":\"$IF\",\"mode\":\"$(hs_mode)\",\"uplink\":\"$STA\",\"ssid\":$(json_str "${SSID:-}"),\"password\":$(json_str "${PSK:-}"),\"channel\":\"$CH\",\"clients\":$CLIENTS}"
+  EN=false; [[ -f "$HS_ENABLED" ]] && EN=true
+  echo "{\"ok\":true,\"enabled\":$EN,\"on\":$ON,\"iface\":\"$IF\",\"mode\":\"$(hs_mode)\",\"uplink\":\"$STA\",\"ssid\":$(json_str "${SSID:-}"),\"password\":$(json_str "${PSK:-}"),\"channel\":\"$CH\",\"clients\":$CLIENTS}"
   ;;
 hotspot-on)
+  [[ -f "$HS_ENABLED" ]] || fail "hotspot dinonaktifkan (aktifkan lagi: sudo touch $HS_ENABLED)"
   IF=$(ap_iface)
   if [[ ! -f "$HS_CONF" ]]; then
     HOST=$(hostname)
@@ -216,6 +219,10 @@ hotspot-off)
   ;;
 hotspot-boot)
   # saat boot: nyalakan lagi hotspot bila profilnya ada (uap0 tidak bertahan setelah reboot)
+  if [[ ! -f "$HS_ENABLED" ]]; then        # dinonaktifkan: pastikan kembali ke Wi-Fi biasa
+    if [[ -f "$HS_STATE" ]] || $NMCLI -t -f NAME connection show | grep -Fxq "$AP_CON"; then exec "$0" hotspot-off; fi
+    echo '{"ok":true,"skipped":"hotspot dinonaktifkan"}'; exit 0
+  fi
   if $NMCLI -t -f NAME connection show | grep -Fxq "$AP_CON"; then
     [[ "$(ap_iface)" == uap0 ]] || { echo '{"ok":true,"skipped":"NetworkManager menyalakan sendiri"}'; exit 0; }
     for i in $(seq 1 30); do internet_ok && break; sleep 2; done
@@ -224,6 +231,9 @@ hotspot-boot)
   echo '{"ok":true,"skipped":true}'
   ;;
 hotspot-check)
+  if [[ ! -f "$HS_ENABLED" ]] && { [[ -f "$HS_STATE" ]] || $NMCLI -t -f NAME connection show | grep -Fxq "$AP_CON"; }; then
+    "$0" hotspot-off >/dev/null; echo '{"ok":true,"changed":true,"disabled":true}'; exit 0
+  fi
   # mode tukar: bila internet lewat dongle mati 2x berturut (±4 menit) -> kembalikan ke Wi-Fi bawaan
   if [[ -f "$HS_STATE" ]]; then
     CNT=/run/hvac-uplink-fail

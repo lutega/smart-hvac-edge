@@ -641,6 +641,7 @@ function renderNet() {
   const cur = w.current;
   let hs = "";
   if (h.ok === false) hs = `<div class="mut" style="font-size:13px">${esc(h.error)}</div>`;
+  else if (h.enabled === false && !h.on) hs = `<div class="mut" style="font-size:14px;margin-top:2px">Dinonaktifkan. Pi dan SMATRUL memakai Wi-Fi yang sama.</div>`;
   else hs = `<div style="display:flex;align-items:center;gap:10px;margin-top:2px">
       <span style="font-size:17px;font-weight:600;color:${h.on ? "var(--teal)" : "var(--mut)"}">${h.on ? "Menyala" : "Mati"}</span>
       <span class="mut" style="font-size:12px">${{ dongle: "hotspot di dongle USB", tukar: "internet lewat dongle, Wi-Fi bawaan jadi hotspot", concurrent: "satu radio AP+STA · eksperimental", none: "radio tidak mendukung" }[h.mode] || h.mode}</span>
