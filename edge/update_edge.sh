@@ -14,6 +14,7 @@ install -o "$PI_USER" -g "$PI_USER" -m 644 "$DIR/hvac_edge.py"      /opt/hvac/ap
 install -o "$PI_USER" -g "$PI_USER" -m 644 "$DIR/panel/index.html"  /opt/hvac/panel_static/index.html
 install -o "$PI_USER" -g "$PI_USER" -m 755 "$DIR/learn_codes.py"    /opt/hvac/learn_codes.py
 install -o "$PI_USER" -g "$PI_USER" -m 755 "$DIR/irdiag.py"         /opt/hvac/irdiag.py
+install -o "$PI_USER" -g "$PI_USER" -m 755 "$DIR/smatrul_onboard.py" /opt/hvac/smatrul_onboard.py
 # skrip jaringan dijalankan via sudo -> milik root, tidak bisa diubah user pi
 install -o root -g root -m 755 "$DIR/netctl.sh"          /opt/hvac/netctl.sh
 install -o root -g root -m 755 "$DIR/tailscale_setup.sh" /opt/hvac/tailscale_setup.sh
