@@ -656,7 +656,8 @@ function renderNet() {
 async function scanNet() {
   $("#n-list").innerHTML = `<div class="mut">Memindai… (±10 detik)</div>`;
   try { NETS = (await api("/api/wifi/scan", "POST")).networks; } catch (e) { $("#n-list").innerHTML = `<div class="mut">${esc(e.message)}</div>`; return; }
-  const saved = (NET && NET.wifi && NET.wifi.saved) || [];
+  const savedList = (NET && NET.wifi && NET.wifi.saved) || [];
+  const saved = savedList.map((x) => typeof x === "string" ? x : x.ssid);
   $("#n-list").innerHTML = NETS.map((n, i) => `<button onclick="wifiTap(${i})" style="display:flex;align-items:center;gap:10px;text-align:left;border-radius:12px;background:${n.in_use ? "rgba(60,198,181,.12)" : "var(--bg)"};border:1.5px solid ${n.in_use ? "var(--teal)" : "transparent"};padding:10px 14px;flex:none">
       <span style="color:var(--teal);width:34px">${bars(n.signal)}</span>
       <div style="flex:1;min-width:0"><div class="ell" style="font-size:16px;font-weight:600">${esc(n.ssid)}</div><div class="mut" style="font-size:12px">${n.in_use ? "tersambung · " : saved.includes(n.ssid) ? "tersimpan · " : ""}${n.security ? "🔒 " + esc(n.security) : "terbuka"} · kanal ${esc(n.channel)}</div></div>
@@ -671,13 +672,13 @@ async function wifiConnect(ssid, password) {
   NETS = null; loadNet();
 }
 window.wifiTap = (i) => {
-  const n = NETS[i], saved = (NET.wifi.saved || []).includes(n.ssid);
+  const n = NETS[i], saved = (NET.wifi.saved || []).some((x) => (x.ssid || x) === n.ssid);
   if (n.in_use) return toast("Sudah tersambung ke " + n.ssid);
   if (/802\.1X|EAP/i.test(n.security)) return toast("Wi-Fi enterprise (802.1X, mis. eduroam) belum didukung panel. Pakai Wi-Fi dengan password biasa.", 6000);
   if (!n.security || saved) return wifiConnect(n.ssid, "");
   keyboard("Password " + n.ssid, "", false, (pw) => { if (pw.length < 8) return toast("Password Wi-Fi minimal 8 karakter"); wifiConnect(n.ssid, pw); }, false, { password: true });
 };
-window.wifiForget = async (i) => { try { await api("/api/wifi/forget", "POST", { name: NETS[i].ssid }); toast("Dilupakan: " + NETS[i].ssid); loadNet(); } catch (e) { toast(e.message); } };
+window.wifiForget = async (i) => { const sv = (NET.wifi.saved || []).find((x) => (x.ssid || x) === NETS[i].ssid); try { await api("/api/wifi/forget", "POST", { name: sv ? (sv.name || sv) : NETS[i].ssid }); toast("Dilupakan: " + NETS[i].ssid); loadNet(); } catch (e) { toast(e.message); } };
 window.hotspotToggle = async (on) => {
   toast(on ? "Menyalakan hotspot… (±20 detik)" : "Mematikan hotspot…", 30000);
   try { const r = await api("/api/hotspot", "POST", { on }); toast(r.ok ? (on ? "Hotspot menyala: " + r.ssid : "Hotspot mati") : r.error, 8000); }

@@ -19,6 +19,15 @@ ap_iface() {                              # wlan1 (dongle USB) bila ada, kalau t
 
 sta_channel() { iw dev "$STA" link 2>/dev/null | awk '/freq:/ {f=int($2); if (f==2484) print 14; else if (f<2484) print (f-2407)/5; else print 0}'; }
 
+con_by_ssid() {                           # nama profil NM untuk SSID (mis. netplan-wlan0-<ssid> di Trixie)
+  local n
+  while IFS= read -r n; do
+    [[ "$n" == "$AP_CON" ]] && continue
+    [[ "$($NMCLI -g 802-11-wireless.ssid connection show "$n" 2>/dev/null)" == "$1" ]] && { echo "$n"; return 0; }
+  done < <($NMCLI -t -f NAME,TYPE connection show | awk -F: '$2=="802-11-wireless"{print $1}')
+  return 1
+}
+
 internet_ok() { ping -c1 -W3 -I "$STA" 1.1.1.1 >/dev/null 2>&1 || ping -c1 -W3 -I "$STA" 8.8.8.8 >/dev/null 2>&1; }
 
 case "${1:-}" in
@@ -37,7 +46,8 @@ saved = []
 for l in run("nmcli", "-t", "-f", "NAME,TYPE,AUTOCONNECT-PRIORITY", "connection", "show").splitlines():
     p = l.split(":")
     if len(p) >= 2 and p[1] == "802-11-wireless" and p[0] != "hvac-hotspot":
-        saved.append(p[0])
+        ssid = run("nmcli", "-g", "802-11-wireless.ssid", "connection", "show", p[0]).strip()
+        saved.append({"name": p[0], "ssid": ssid or p[0]})
 print(json.dumps({"ok": True, "current": cur, "ip": ip[3].split("/")[0] if len(ip) > 3 else None, "saved": saved}))
 PY
   ;;
@@ -61,13 +71,15 @@ PY
 wifi-connect)
   SSID="${2:-}"; [[ -n "$SSID" ]] || fail "SSID kosong"
   IFS= read -r PSK || true
-  if [[ -z "$PSK" ]] && $NMCLI -t -f NAME connection show | grep -Fxq "$SSID"; then
+  OLD=$(con_by_ssid "$SSID" || true)
+  if [[ -z "$PSK" && -n "$OLD" ]]; then
     # Wi-Fi yang sudah tersimpan: cukup aktifkan
-    if OUT=$($NMCLI --wait 40 connection up "$SSID" 2>&1); then echo "{\"ok\":true,\"ssid\":$(json_str "$SSID")}"; exit 0; fi
+    if OUT=$($NMCLI --wait 40 connection up "$OLD" 2>&1); then echo "{\"ok\":true,\"ssid\":$(json_str "$SSID")}"; exit 0; fi
     $NMCLI device connect "$STA" >/dev/null 2>&1 &
     fail "gagal tersambung ke $SSID: ${OUT:0:120}"
   fi
   # buat/ganti profil lalu aktifkan; profil Wi-Fi lain tetap tersimpan sebagai cadangan
+  [[ -n "$OLD" ]] && $NMCLI connection delete "$OLD" >/dev/null 2>&1 || true
   $NMCLI connection delete "$SSID" >/dev/null 2>&1 || true
   if [[ -n "$PSK" ]]; then
     $NMCLI connection add type wifi ifname "$STA" con-name "$SSID" ssid "$SSID" \
