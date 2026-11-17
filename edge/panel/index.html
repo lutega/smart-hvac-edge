@@ -24,7 +24,7 @@ button:active{filter:brightness(1.25)}
 .sq.s{width:52px;height:52px;border-radius:12px;font-size:28px}
 .ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tabs{display:flex;gap:6px;background:var(--sf);padding:5px;border-radius:14px}
-.tabs button{height:42px;padding:0 18px;border-radius:10px;font-size:16px;font-weight:600;background:transparent;color:var(--mut)}
+.tabs button{height:42px;padding:0 14px;white-space:nowrap;border-radius:10px;font-size:16px;font-weight:600;background:transparent;color:var(--mut)}
 .tabs button.on{background:var(--sf2);color:var(--ink)}
 .lbl{color:var(--mut);font-size:13px;margin-bottom:6px}
 .field{height:52px;border-radius:12px;background:var(--bg);border:1.5px solid var(--sf2);display:flex;align-items:center;padding:0 14px;font-size:20px;font-weight:600}
@@ -155,11 +155,11 @@ button:active{filter:brightness(1.25)}
 <!-- ============================== 3 · PENGATURAN -->
 <section id="v-set" class="view" style="padding:18px 28px;flex-direction:column;gap:14px">
   <div style="display:flex;align-items:center;gap:16px">
-    <button class="btn" id="s-back" style="height:48px;padding:0 18px 0 14px;font-size:16px;background:var(--sf)">‹&nbsp; Kembali</button>
+    <button class="btn" id="s-back" style="height:48px;padding:0 18px 0 14px;font-size:16px;background:var(--sf);flex:none;white-space:nowrap">‹&nbsp; Kembali</button>
     <div class="big" style="font-size:28px;font-weight:700">Pengaturan</div>
     <span class="mut ell" id="s-sub" style="font-size:14px"></span>
     <div class="tabs" style="margin-left:auto">
-      <button data-tab="room">Ruangan</button><button data-tab="remote">Remote AC</button><button data-tab="log">Riwayat</button>
+      <button data-tab="room">Ruangan</button><button data-tab="remote">Remote AC</button><button data-tab="net">Jaringan</button><button data-tab="log">Riwayat</button>
     </div>
   </div>
 
@@ -204,6 +204,16 @@ button:active{filter:brightness(1.25)}
       <div class="mut" id="c-note" style="margin-top:auto;font-size:13px;line-height:1.4"></div>
     </div>
     <div class="card" id="rp" style="flex:1;padding:16px 20px;display:flex;flex-direction:column;gap:8px;min-width:0"></div>
+  </div>
+
+  <div id="t-net" style="flex:1;min-height:0;display:none;gap:16px">
+    <div class="card scroll" id="n-left" style="flex:1;padding:16px 20px;display:flex;flex-direction:column;gap:10px;min-width:0"></div>
+    <div class="card" style="flex:1;padding:16px 20px;display:flex;flex-direction:column;gap:10px;min-width:0">
+      <div style="display:flex;align-items:center;justify-content:space-between"><span style="font-size:17px;font-weight:600">Jaringan Wi-Fi</span>
+        <button class="btn" id="n-scan" style="height:40px;padding:0 16px;font-size:15px">Pindai</button></div>
+      <div class="scroll" id="n-list" style="flex:1;min-height:0;display:flex;flex-direction:column;gap:6px"></div>
+      <div class="mut" style="font-size:12px;line-height:1.4">Wi-Fi lama tetap tersimpan. Bila gagal tersambung, Pi kembali ke Wi-Fi sebelumnya.</div>
+    </div>
   </div>
 
   <div id="t-log" class="card" style="flex:1;min-height:0;display:none;flex-direction:column;gap:10px;padding:14px 20px">
@@ -380,33 +390,39 @@ $("#m-endbtn").onclick = async () => { try { await api("/api/meeting/end", "POST
 $("#m-extend").onclick = async () => { try { await api("/api/meeting/extend", "POST", { minutes: 15 }); poll(); } catch (e) { toast(e.message); } };
 
 // ---------------------------------------------------------------- keyboard layar & PIN
-function keyboard(title, value, numeric, onOk, secret) {
-  let v = value || "", shift = true;
+function keyboard(title, value, numeric, onOk, secret, opt) {
+  opt = opt || {};
+  const pw = !!opt.password, max = opt.max || (pw ? 63 : 40);
+  let v = value || "", shift = !pw && !v, sym = false;
   const kb = $("#kb");
-  const rows = numeric ? [["1","2","3"],["4","5","6"],["7","8","9"],["⌫","0","OK"]]
-    : [["1","2","3","4","5","6","7","8","9","0"],["q","w","e","r","t","y","u","i","o","p"],["a","s","d","f","g","h","j","k","l","-"],["⇧","z","x","c","v","b","n","m","·","⌫"],["Batal","spasi","OK"]];
+  const ABC = [["1","2","3","4","5","6","7","8","9","0"],["q","w","e","r","t","y","u","i","o","p"],["a","s","d","f","g","h","j","k","l","-"],["⇧","z","x","c","v","b","n","m","?123","⌫"],["Batal","spasi","OK"]];
+  const SYM = [["1","2","3","4","5","6","7","8","9","0"],["!","@","#","$","%","&","*","(",")","_"],["+","=","/","\\",":",";","'","\"",",","."],["abc","?","<",">","[","]","{","}","~","⌫"],["Batal","spasi","OK"]];
+  const NUM = [["1","2","3"],["4","5","6"],["7","8","9"],["⌫","0","OK"]];
   function draw() {
+    const rows = numeric ? NUM : sym ? SYM : ABC;
     kb.className = numeric ? "num" : "";
     kb.innerHTML = `<div style="display:flex;align-items:center;gap:14px"><span class="mut" style="font-size:15px">${esc(title)}</span>
-      <div class="field" style="flex:1;border-color:var(--teal)">${esc(secret ? "•".repeat(v.length) : v)}<span style="width:2px;height:24px;background:var(--teal);margin-left:3px"></span></div>
+      <div class="field" style="flex:1;border-color:var(--teal);font-family:${pw ? "'DejaVu Sans Mono',monospace" : "inherit"}">${esc(secret ? "•".repeat(v.length) : v)}<span style="width:2px;height:24px;background:var(--teal);margin-left:3px"></span></div>
+      ${pw ? `<span class="mut" style="font-size:13px">${v.length} karakter</span>` : ""}
       ${numeric ? `<button class="btn" style="width:120px" data-k="Batal">Batal</button>` : ""}</div>
       <div class="keys">${rows.map((r) => `<div class="kr">${r.map((k) => {
         const lab = k.length === 1 && !numeric && shift ? k.toUpperCase() : k;
         const wide = k === "spasi" ? "max-width:440px;flex:5" : k === "OK" || k === "Batal" ? "max-width:180px;flex:2" : "";
-        const col = k === "OK" ? "background:var(--teal);color:var(--teal-ink)" : "";
-        return `<button data-k="${k}" style="${wide};${col}">${lab}</button>`; }).join("")}</div>`).join("")}</div>`;
+        const col = k === "OK" ? "background:var(--teal);color:var(--teal-ink)" : k === "⇧" && shift ? "background:var(--ink);color:var(--bg)" : "";
+        return `<button data-k="${esc(k)}" style="${wide};${col}">${esc(lab)}</button>`; }).join("")}</div>`).join("")}</div>`;
   }
   kb.onclick = (ev) => {
     const b = ev.target.closest("button"); if (!b) return;
     const k = b.dataset.k;
-    if (k === "OK") { $("#ov").classList.remove("on"); onOk(v.trim()); return; }
+    if (k === "OK") { $("#ov").classList.remove("on"); onOk(pw ? v : v.trim()); return; }
     if (k === "Batal") { $("#ov").classList.remove("on"); return; }
     if (k === "⌫") v = v.slice(0, -1);
     else if (k === "⇧") shift = !shift;
+    else if (k === "?123") sym = true;
+    else if (k === "abc") sym = false;
     else if (k === "spasi") v += " ";
-    else if (k === "·") v += " · ";
-    else { v += (!numeric && shift) ? k.toUpperCase() : k; if (shift && !numeric) shift = false; }
-    if (v.length > 40) v = v.slice(0, 40);
+    else { v += (!numeric && shift && !sym) ? k.toUpperCase() : k; if (shift && !pw) shift = false; }
+    if (v.length > max) v = v.slice(0, max);
     draw();
   };
   draw(); $("#ov").classList.add("on");
@@ -427,6 +443,8 @@ function openTab(t) {
   $("#t-room").style.display = t === "room" ? "flex" : "none";
   $("#t-remote").style.display = t === "remote" ? "flex" : "none";
   $("#t-log").style.display = t === "log" ? "flex" : "none";
+  $("#t-net").style.display = t === "net" ? "flex" : "none";
+  if (t === "net") loadNet();
   if (t === "room") loadRoom();
   if (t === "remote") loadRemote();
   if (t === "log") loadLog();
@@ -607,9 +625,69 @@ window.exportProf = async () => {
   try { const j = await api("/api/profiles/" + p.id + "/export", "POST"); toast("Tersimpan di Pi: " + j.path, 6000); } catch (e) { toast(e.message); }
 };
 
+// --- tab jaringan
+let NET = null, NETS = null;
+const bars = (sig) => "▂▄▆█".slice(0, Math.max(1, Math.ceil(sig / 25)));
+async function loadNet() {
+  $("#n-left").innerHTML = `<div class="mut">Memuat status jaringan…</div>`;
+  try { NET = await api("/api/net"); } catch (e) { NET = null; toast(e.message); }
+  renderNet();
+  if (!NETS) scanNet();
+}
+function renderNet() {
+  if (!NET) return;
+  const w = NET.wifi || {}, h = NET.hotspot || {}, t = NET.tailscale || {}, sm = NET.smatrul || {};
+  const box = (title, body) => `<div style="background:var(--bg);border-radius:12px;padding:10px 14px"><div class="mut" style="font-size:12px">${title}</div>${body}</div>`;
+  const cur = w.current;
+  let hs = "";
+  if (h.ok === false) hs = `<div class="mut" style="font-size:13px">${esc(h.error)}</div>`;
+  else hs = `<div style="display:flex;align-items:center;gap:10px;margin-top:2px">
+      <span style="font-size:17px;font-weight:600;color:${h.on ? "var(--teal)" : "var(--mut)"}">${h.on ? "Menyala" : "Mati"}</span>
+      <span class="mut" style="font-size:12px">${h.mode === "dongle" ? "dongle USB (wlan1)" : "satu radio AP+STA · eksperimental"}</span>
+      <button class="btn ${h.on ? "" : "teal"}" style="margin-left:auto;height:38px;padding:0 14px;font-size:14px" onclick="hotspotToggle(${!h.on})">${h.on ? "Matikan" : "Nyalakan"}</button></div>
+    ${h.ssid ? `<div style="font-size:14px;margin-top:6px">SSID <b>${esc(h.ssid)}</b> · password <b style="font-family:'DejaVu Sans Mono',monospace">${esc(h.password)}</b></div>` : ""}
+    ${h.on ? `<div class="mut" style="font-size:12px;margin-top:2px">Kanal ${esc(h.channel)} · ${h.clients.length} perangkat: ${h.clients.map((c) => esc(c.name !== "*" ? c.name : c.ip)).join(", ") || "-"}</div>` : ""}`;
+  $("#n-left").innerHTML =
+    box("Wi-Fi tersambung", cur ? `<div style="display:flex;align-items:baseline;gap:10px"><span class="ell" style="font-size:20px;font-weight:600">${esc(cur.ssid)}</span><span style="color:var(--teal)">${bars(cur.signal)}</span><span class="mut" style="font-size:13px">${cur.signal} %</span></div><div class="mut" style="font-size:13px">IP ${esc(w.ip || "-")} · kanal ${esc(cur.channel)}</div>` : `<div style="font-size:17px;color:var(--amber)">Tidak tersambung</div>`) +
+    box("Tailscale (akses jarak jauh)", t.installed ? `<div style="font-size:17px;font-weight:600">${esc(t.ip || "belum login")}</div><div class="mut" style="font-size:12px">${esc(t.dns || t.state || "")}</div>` : `<div style="font-size:14px">Belum terpasang. Di terminal Pi: <span style="font-family:'DejaVu Sans Mono',monospace;color:var(--teal)">sudo bash /opt/hvac/tailscale_setup.sh</span></div>`) +
+    box("SMATRUL", `<div style="font-size:17px;font-weight:600">${esc(sm.ip || "-")} <span style="font-size:13px;color:${sm.online ? "var(--teal)" : "var(--amber)"}">${sm.online ? "online" : "tidak menjawab"}</span></div><div class="mut" style="font-size:12px">IP dari ${esc(sm.ip_source)} · dicari ulang otomatis bila pindah jaringan</div>`) +
+    box("Hotspot untuk SMATRUL", hs);
+}
+async function scanNet() {
+  $("#n-list").innerHTML = `<div class="mut">Memindai… (±10 detik)</div>`;
+  try { NETS = (await api("/api/wifi/scan", "POST")).networks; } catch (e) { $("#n-list").innerHTML = `<div class="mut">${esc(e.message)}</div>`; return; }
+  const saved = (NET && NET.wifi && NET.wifi.saved) || [];
+  $("#n-list").innerHTML = NETS.map((n, i) => `<button onclick="wifiTap(${i})" style="display:flex;align-items:center;gap:10px;text-align:left;border-radius:12px;background:${n.in_use ? "rgba(60,198,181,.12)" : "var(--bg)"};border:1.5px solid ${n.in_use ? "var(--teal)" : "transparent"};padding:10px 14px;flex:none">
+      <span style="color:var(--teal);width:34px">${bars(n.signal)}</span>
+      <div style="flex:1;min-width:0"><div class="ell" style="font-size:16px;font-weight:600">${esc(n.ssid)}</div><div class="mut" style="font-size:12px">${n.in_use ? "tersambung · " : saved.includes(n.ssid) ? "tersimpan · " : ""}${n.security ? "🔒 " + esc(n.security) : "terbuka"} · kanal ${esc(n.channel)}</div></div>
+      ${saved.includes(n.ssid) && !n.in_use ? `<span onclick="event.stopPropagation();wifiForget('${i}')" style="color:var(--mut);font-size:13px;padding:6px">Lupakan</span>` : ""}
+    </button>`).join("") || `<div class="mut">Tidak ada jaringan ditemukan.</div>`;
+}
+$("#n-scan").onclick = () => scanNet();
+async function wifiConnect(ssid, password) {
+  toast("Menyambung ke " + ssid + "… (sampai 40 detik)", 40000);
+  try { const r = await api("/api/wifi/connect", "POST", { ssid, password }); toast(r.ok ? "Tersambung ke " + ssid : r.error, 6000); }
+  catch (e) { toast(e.message, 6000); }
+  NETS = null; loadNet();
+}
+window.wifiTap = (i) => {
+  const n = NETS[i], saved = (NET.wifi.saved || []).includes(n.ssid);
+  if (n.in_use) return toast("Sudah tersambung ke " + n.ssid);
+  if (/802\.1X|EAP/i.test(n.security)) return toast("Wi-Fi enterprise (802.1X, mis. eduroam) belum didukung panel. Pakai Wi-Fi dengan password biasa.", 6000);
+  if (!n.security || saved) return wifiConnect(n.ssid, "");
+  keyboard("Password " + n.ssid, "", false, (pw) => { if (pw.length < 8) return toast("Password Wi-Fi minimal 8 karakter"); wifiConnect(n.ssid, pw); }, false, { password: true });
+};
+window.wifiForget = async (i) => { try { await api("/api/wifi/forget", "POST", { name: NETS[i].ssid }); toast("Dilupakan: " + NETS[i].ssid); loadNet(); } catch (e) { toast(e.message); } };
+window.hotspotToggle = async (on) => {
+  toast(on ? "Menyalakan hotspot… (±20 detik)" : "Mematikan hotspot…", 30000);
+  try { const r = await api("/api/hotspot", "POST", { on }); toast(r.ok ? (on ? "Hotspot menyala: " + r.ssid : "Hotspot mati") : r.error, 8000); }
+  catch (e) { toast(e.message, 8000); }
+  loadNet();
+};
+
 // --- tab riwayat
 const KINDS = [["", "Semua"], ["panel", "Panel"], ["ai", "Rekomendasi AI"], ["auto", "Otomatis"], ["learn", "Remote"], ["fail", "Gagal"]];
-const ACT = { power_on: "Power ON", power_off: "Power OFF", set_temp: "Setpoint", learn: "Rekam kode", test: "Uji kode", profile: "Profil", save_profile: "Simpan profil", dismiss: "Abaikan saran", meeting_start: "Rapat mulai", meeting_end: "Rapat selesai", meeting_extend: "Rapat +15", settings: "Pengaturan", pin: "PIN" };
+const ACT = { power_on: "Power ON", power_off: "Power OFF", set_temp: "Setpoint", learn: "Rekam kode", test: "Uji kode", profile: "Profil", save_profile: "Simpan profil", dismiss: "Abaikan saran", meeting_start: "Rapat mulai", meeting_end: "Rapat selesai", meeting_extend: "Rapat +15", settings: "Pengaturan", pin: "PIN", network: "Jaringan" };
 const SRC = (s) => s === "panel" ? "Panel · manual" : s.startsWith("ai:") ? "Rekomendasi AI · " + s.slice(3) : s.startsWith("auto:") ? "Otomatis · " + s.slice(5) : s === "settings" ? "Pengaturan" : s;
 async function loadLog() {
   $("#l-filters").innerHTML = KINDS.map(([k, l]) => `<button class="chip" style="font-size:14px;background:${logKind === k ? "var(--teal)" : "var(--sf2)"};color:${logKind === k ? "var(--teal-ink)" : "var(--ink)"}" onclick="logFilter('${k}')">${l}</button>`).join("") + `<span class="mut" id="l-count" style="margin-left:auto;font-size:13px"></span>`;

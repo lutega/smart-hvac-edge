@@ -14,6 +14,32 @@ install -o "$PI_USER" -g "$PI_USER" -m 644 "$DIR/hvac_edge.py"      /opt/hvac/ap
 install -o "$PI_USER" -g "$PI_USER" -m 644 "$DIR/panel/index.html"  /opt/hvac/panel_static/index.html
 install -o "$PI_USER" -g "$PI_USER" -m 755 "$DIR/learn_codes.py"    /opt/hvac/learn_codes.py
 install -o "$PI_USER" -g "$PI_USER" -m 755 "$DIR/irdiag.py"         /opt/hvac/irdiag.py
+# skrip jaringan dijalankan via sudo -> milik root, tidak bisa diubah user pi
+install -o root -g root -m 755 "$DIR/netctl.sh"          /opt/hvac/netctl.sh
+install -o root -g root -m 755 "$DIR/tailscale_setup.sh" /opt/hvac/tailscale_setup.sh
+cat >/etc/sudoers.d/hvac-net <<SUDO
+# panel hvac-edge: atur Wi-Fi/hotspot tanpa password
+$PI_USER ALL=(root) NOPASSWD: /opt/hvac/netctl.sh
+SUDO
+chmod 440 /etc/sudoers.d/hvac-net
+visudo -cf /etc/sudoers.d/hvac-net >/dev/null || { rm -f /etc/sudoers.d/hvac-net; echo "!! sudoers hvac-net tidak valid, dibatalkan"; }
+command -v iw >/dev/null || apt-get install -y -q iw >/dev/null 2>&1 || echo "   !! paket iw belum terpasang (hotspot satu radio butuh iw)"
+cat >/etc/systemd/system/hvac-hotspot.service <<UNIT
+[Unit]
+Description=HVAC hotspot SMATRUL (nyala lagi setelah boot bila pernah dinyalakan)
+After=NetworkManager.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/hvac/netctl.sh hotspot-boot
+TimeoutStartSec=150
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable hvac-hotspot.service >/dev/null 2>&1 || true
 install -d -o "$PI_USER" -g "$PI_USER" /var/lib/hvac /var/lib/hvac/remotes /var/lib/hvac/export
 chown -R "$PI_USER:$PI_USER" /var/lib/hvac
 [[ -f /var/lib/hvac/codes.json ]] && cp -n /var/lib/hvac/codes.json /var/lib/hvac/codes.before-v03.json || true
@@ -56,4 +82,5 @@ for p in d["profiles"]: print(f"   - {p[\"name\"]}: {p[\"count\"]}/{p[\"total\"]
 curl -fs -o /dev/null http://127.0.0.1:8080/api/qr.svg && echo "   QR booking: OK" || echo "   QR booking: tidak tersedia"
 echo
 echo "Selesai. Panel memuat ulang. PIN teknisi = [panel] technician_pin di /etc/hvac/edge.toml (bawaan 0000)."
+echo "Jaringan: Pengaturan > Jaringan (Wi-Fi, hotspot SMATRUL). Tailscale: sudo bash /opt/hvac/tailscale_setup.sh"
 echo "Rekam remote: layar Pengaturan > Remote AC > Panduan lengkap   (atau: python3 /opt/hvac/learn_codes.py)"

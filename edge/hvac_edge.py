@@ -35,7 +35,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-VERSION = "0.3.2"
+VERSION = "0.4.0"
 STATIC = Path(os.environ.get("HVAC_STATIC", "/opt/hvac/panel_static"))
 EDGE_CFG = Path(os.environ.get("HVAC_EDGE_CFG", "/etc/hvac/edge.toml"))
 SECRETS = Path(os.environ.get("HVAC_SECRETS", "/etc/hvac/secrets.toml"))
@@ -48,6 +48,8 @@ SETTINGS = DATA / "settings.json"
 STATE = DATA / "ac_state.json"
 MEETING = DATA / "meeting.json"
 DB = DATA / "hvac.db"
+SM_OVERRIDE = DATA / "smatrul_override.json"
+NETCTL = os.environ.get("HVAC_NETCTL", "/opt/hvac/netctl.sh")
 DEBOUNCE_S = 1.0
 QUICK_KEYS = ["off", "cool_22", "cool_24", "cool_25", "cool_26"]
 DISMISS_S = 15 * 60          # rekomendasi yang diabaikan tidak muncul lagi selama ini
@@ -76,6 +78,10 @@ def load_cfg():
                         cfg[k] = v
         except Exception as e:  # noqa: BLE001
             cfg.setdefault("_errors", []).append(f"{p.name}: {e}")
+    ov = read_json(SM_OVERRIDE, None)        # IP SMATRUL hasil pencarian ulang (mis. setelah pindah Wi-Fi/hotspot)
+    if ov and cfg.get("smatrul", {}).get("device_id") == ov.get("device_id") and ov.get("ip"):
+        cfg["smatrul"]["ip"] = ov["ip"]
+        cfg["smatrul"]["ip_source"] = "otomatis"
     return cfg
 
 
@@ -590,7 +596,14 @@ def ai_auto_tick():
 
 
 def control_loop():
+    n = 0
     while True:
+        n += 1
+        if n % 12 == 0 and Path(NETCTL).exists():     # tiap ±2 menit: kanal hotspot ikut Wi-Fi atas
+            try:
+                netctl("hotspot-check", timeout=40)
+            except Exception:
+                pass
         try:
             control_tick()
             ai_auto_tick()
@@ -711,7 +724,25 @@ def room_now():
 HISTORY = []                 # (ts, temp) 30 menit terakhir untuk grafik panel
 
 
+def rediscover_smatrul(sm):
+    """Cari IP baru SMATRUL dari siaran UDP Tuya (port 6666/6667) berdasarkan device_id."""
+    try:
+        import tinytuya
+        r = tinytuya.find_device(dev_id=sm["device_id"])
+    except Exception as e:  # noqa: BLE001
+        print(f"[smatrul] pencarian gagal: {e}", flush=True)
+        return None
+    ip = (r or {}).get("ip")
+    if ip and ip != sm.get("ip"):
+        write_json(SM_OVERRIDE, {"device_id": sm["device_id"], "ip": ip, "ts": int(time.time())})
+        log_cmd(source="auto:jaringan", action="network", result="ok", detail=f"SMATRUL pindah IP {sm.get('ip')} -> {ip}")
+        HUB.dev = None
+        return ip
+    return None
+
+
 def smatrul_loop():
+    fails = 0
     while True:
         cfg = load_cfg()
         sm = cfg.get("smatrul", {})
@@ -737,6 +768,7 @@ def smatrul_loop():
                 ROOM["rh_pct"] = round(h_raw / float(sm.get("rh_scale", 1) or 1)
                                        + float(sm.get("rh_offset_pct", 0) or 0), 1)
             ROOM.update(ts=time.time(), error=None)
+            fails = 0
             if ROOM["temp_c"] is not None:
                 HISTORY.append((int(time.time()), ROOM["temp_c"]))
                 cut = time.time() - 1800
@@ -744,6 +776,11 @@ def smatrul_loop():
                     HISTORY.pop(0)
         except Exception as e:  # noqa: BLE001
             ROOM["error"] = f"gagal baca SMATRUL: {str(e)[:120]}"
+            fails += 1
+            if fails in (3, 12, 60) or (fails > 60 and fails % 60 == 0):
+                ROOM["error"] += " · mencari IP baru SMATRUL…"
+                with HUB.lock:
+                    rediscover_smatrul(sm)
         time.sleep(poll)
 
 
@@ -1232,6 +1269,83 @@ def codes_list():
     codes.update((read_json(DRAFT, None) or {}).get("codes", {}))
     want = wanted_keys(acc)
     return {"learned": sorted(codes), "missing": [k for k in want if k not in codes], "wanted": want}
+
+
+# --------------------------------------------------------------------- API: jaringan
+def netctl(*args, stdin=None, timeout=60):
+    if not Path(NETCTL).exists():
+        raise HTTPException(503, "netctl.sh belum terpasang (jalankan install ulang)")
+    try:
+        r = subprocess.run(["sudo", "-n", NETCTL, *args], input=stdin, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise HTTPException(504, "perintah jaringan terlalu lama")
+    try:
+        out = json.loads(r.stdout.strip().splitlines()[-1])
+    except Exception:
+        raise HTTPException(500, (r.stderr or r.stdout or "netctl gagal").strip()[:200])
+    return out
+
+
+@app.get("/api/net")
+def net_status():
+    out = {}
+    for key, cmd in (("wifi", "wifi-status"), ("hotspot", "hotspot-status"), ("tailscale", "ts-status")):
+        try:
+            out[key] = netctl(cmd, timeout=30)
+        except HTTPException as e:
+            out[key] = {"ok": False, "error": e.detail}
+    sm = load_cfg().get("smatrul", {})
+    out["smatrul"] = {"ip": sm.get("ip"), "ip_source": sm.get("ip_source", "konfigurasi"),
+                      "online": ROOM["ts"] is not None and time.time() - ROOM["ts"] < 60}
+    return out
+
+
+@app.post("/api/wifi/scan")
+def wifi_scan():
+    return netctl("wifi-scan", timeout=60)
+
+
+class WifiCmd(BaseModel):
+    ssid: str
+    password: str = ""
+
+
+@app.post("/api/wifi/connect")
+def wifi_connect(cmd: WifiCmd):
+    if not cmd.ssid.strip() or len(cmd.ssid) > 32:
+        raise HTTPException(400, "SSID tidak valid")
+    if cmd.password and not (8 <= len(cmd.password) <= 63):
+        raise HTTPException(400, "password Wi-Fi harus 8–63 karakter")
+    r = netctl("wifi-connect", cmd.ssid, stdin=cmd.password + "\n", timeout=90)
+    log_cmd(source="settings", action="network", result="ok" if r.get("ok") else "gagal",
+            detail=f"Wi-Fi {cmd.ssid}" + ("" if r.get("ok") else f": {r.get('error', '')[:80]}"))
+    if r.get("ok"):
+        threading.Thread(target=lambda: (time.sleep(15), rediscover_smatrul(load_cfg().get("smatrul", {}))),
+                         daemon=True).start()
+    return r
+
+
+class ForgetCmd(BaseModel):
+    name: str
+
+
+@app.post("/api/wifi/forget")
+def wifi_forget(cmd: ForgetCmd):
+    r = netctl("wifi-forget", cmd.name)
+    log_cmd(source="settings", action="network", result="ok" if r.get("ok") else "gagal", detail=f"lupakan Wi-Fi {cmd.name}")
+    return r
+
+
+class HotspotCmd(BaseModel):
+    on: bool
+
+
+@app.post("/api/hotspot")
+def hotspot(cmd: HotspotCmd):
+    r = netctl("hotspot-on" if cmd.on else "hotspot-off", timeout=90)
+    log_cmd(source="settings", action="network", result="ok" if r.get("ok") else "gagal",
+            detail=("hotspot nyala" if cmd.on else "hotspot mati") + ("" if r.get("ok") else f": {r.get('error', '')[:80]}"))
+    return r
 
 
 # --------------------------------------------------------------------- QR & halaman
