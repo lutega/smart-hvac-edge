@@ -224,7 +224,15 @@ hotspot-boot)
   echo '{"ok":true,"skipped":true}'
   ;;
 hotspot-check)
-  # dipanggil berkala: AP satu radio harus di kanal yang sama dengan Wi-Fi atas
+  # mode tukar: bila internet lewat dongle mati 2x berturut (±4 menit) -> kembalikan ke Wi-Fi bawaan
+  if [[ -f "$HS_STATE" ]]; then
+    CNT=/run/hvac-uplink-fail
+    if internet_ok wlan1; then rm -f "$CNT"; else
+      N=$(( $(cat "$CNT" 2>/dev/null || echo 0) + 1 )); echo "$N" > "$CNT"
+      if (( N >= 2 )); then rm -f "$CNT"; "$0" hotspot-off >/dev/null; echo '{"ok":true,"changed":true,"rollback":true}'; exit 0; fi
+    fi
+  fi
+  # AP satu radio harus di kanal yang sama dengan Wi-Fi atas
   IF=$(ap_iface)
   [[ "$IF" == uap0 && -n "$($NMCLI -t -f NAME connection show --active | grep -Fx "$AP_CON")" ]] || { echo '{"ok":true,"changed":false}'; exit 0; }
   CH=$(sta_channel); CUR=$($NMCLI -g 802-11-wireless.channel connection show "$AP_CON")
