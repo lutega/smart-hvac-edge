@@ -643,7 +643,7 @@ function renderNet() {
   if (h.ok === false) hs = `<div class="mut" style="font-size:13px">${esc(h.error)}</div>`;
   else hs = `<div style="display:flex;align-items:center;gap:10px;margin-top:2px">
       <span style="font-size:17px;font-weight:600;color:${h.on ? "var(--teal)" : "var(--mut)"}">${h.on ? "Menyala" : "Mati"}</span>
-      <span class="mut" style="font-size:12px">${h.mode === "dongle" ? "dongle USB (wlan1)" : "satu radio AP+STA · eksperimental"}</span>
+      <span class="mut" style="font-size:12px">${{ dongle: "hotspot di dongle USB", tukar: "internet lewat dongle, Wi-Fi bawaan jadi hotspot", concurrent: "satu radio AP+STA · eksperimental", none: "radio tidak mendukung" }[h.mode] || h.mode}</span>
       <button class="btn ${h.on ? "" : "teal"}" style="margin-left:auto;height:38px;padding:0 14px;font-size:14px" onclick="hotspotToggle(${!h.on})">${h.on ? "Matikan" : "Nyalakan"}</button></div>
     ${h.ssid ? `<div style="font-size:14px;margin-top:6px">SSID <b>${esc(h.ssid)}</b> · password <b style="font-family:'DejaVu Sans Mono',monospace">${esc(h.password)}</b></div>` : ""}
     ${h.on ? `<div class="mut" style="font-size:12px;margin-top:2px">Kanal ${esc(h.channel)} · ${h.clients.length} perangkat: ${h.clients.map((c) => esc(c.name !== "*" ? c.name : c.ip)).join(", ") || "-"}</div>` : ""}`;
